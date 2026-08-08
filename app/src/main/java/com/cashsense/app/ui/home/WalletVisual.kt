@@ -139,6 +139,32 @@ private fun stackLayerCount(count: Int): Int = when {
     else -> 3
 }
 
+/**
+ * Real RBI notes physically grow with denomination — a ₹500 note is noticeably longer than a
+ * ₹10 one. Mirroring the actual width:height ratios (rather than one fixed shape for every
+ * value) is a purely dimensional cue, not protected artwork, and it's an authenticity signal
+ * most people recognise instinctively even if they couldn't name it.
+ */
+private fun noteAspectRatio(value: Int): Float = when (value) {
+    500 -> 2.27f
+    200 -> 2.25f
+    100 -> 2.15f
+    50 -> 2.05f
+    20 -> 2.05f
+    else -> 1.95f // ₹10
+}
+
+/** More lines for higher-value notes — evokes the tactile bleed-mark convention real notes use
+ *  for the visually impaired, without claiming to match RBI's actual counts. */
+private fun bleedLineCount(value: Int): Int = when (value) {
+    500 -> 6
+    200 -> 5
+    100 -> 4
+    50 -> 3
+    20 -> 2
+    else -> 1 // ₹10
+}
+
 @Composable
 fun DenominationCard(
     stack: DenominationStack,
@@ -229,18 +255,19 @@ private fun NoteVisual(
     layers: Int
 ) {
     val shape = RoundedCornerShape(8.dp)
+    val aspect = noteAspectRatio(value)
 
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .aspectRatio(2.1f)
+            .aspectRatio(aspect)
     ) {
         // Back layers: offset, darkened copies standing in for the notes underneath.
         for (i in layers downTo 1) {
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .aspectRatio(2.1f)
+                    .aspectRatio(aspect)
                     .offset(x = (i * 3).dp, y = (i * 3).dp)
                     .clip(shape)
                     .background(darken(baseColor, 0.1f * i))
@@ -253,7 +280,7 @@ private fun NoteVisual(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .aspectRatio(2.1f)
+                .aspectRatio(aspect)
                 .shadow(elevation = 3.dp, shape = shape)
                 .border(1.4.dp, ringColor, shape)
                 .clip(shape)
@@ -263,6 +290,7 @@ private fun NoteVisual(
                 .drawBehind {
                     drawGuillocheLines(textColor)
                     drawSecurityThread()
+                    drawBleedLines(textColor, bleedLineCount(value))
                     drawSheen()
                 }
                 .border(0.6.dp, Color.White.copy(alpha = 0.35f), shape)
@@ -287,11 +315,11 @@ private fun NoteVisual(
                     .weight(1f)
                     .fillMaxWidth()
             ) {
-                PortraitWatermark(
+                PortraitSilhouette(
                     color = textColor,
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .size(24.dp)
+                        .size(width = 20.dp, height = 30.dp)
                 )
                 Text(
                     text = "$value",
@@ -308,12 +336,21 @@ private fun NoteVisual(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.Bottom
             ) {
-                Text(
-                    text = "RESERVE BANK OF INDIA",
-                    color = textColor.copy(alpha = 0.85f),
-                    fontSize = 5.sp
-                )
-                EmblemSeal(color = textColor, modifier = Modifier.size(11.dp))
+                Column {
+                    Text(
+                        text = "भारतीय रिज़र्व बैंक",
+                        color = textColor.copy(alpha = 0.85f),
+                        fontSize = 5.sp,
+                        lineHeight = 6.sp
+                    )
+                    Text(
+                        text = "RESERVE BANK OF INDIA",
+                        color = textColor.copy(alpha = 0.85f),
+                        fontSize = 5.sp,
+                        lineHeight = 6.sp
+                    )
+                }
+                PillarEmblem(color = textColor, modifier = Modifier.size(width = 10.dp, height = 13.dp))
             }
         }
     }
@@ -364,29 +401,53 @@ private fun CoinVisual(
     }
 }
 
-/** A generic, non-specific bust silhouette — evokes "portrait side of a note" without depicting anyone. */
+/**
+ * A generic side-profile bust — the universal "portrait side of currency" convention used on
+ * coins and banknotes worldwide. Deliberately featureless (no glasses, no specific likeness) so
+ * it reads as "a portrait" without depicting any real person's photograph or engraving.
+ */
 @Composable
-private fun PortraitWatermark(color: Color, modifier: Modifier = Modifier) {
+private fun PortraitSilhouette(color: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
-        val alpha = 0.16f
-        val headRadius = size.minDimension * 0.24f
-        val headCenter = Offset(size.width * 0.5f, size.height * 0.32f)
-        drawCircle(color = color.copy(alpha = alpha), radius = headRadius, center = headCenter)
-        drawCircle(
-            color = color.copy(alpha = alpha),
-            radius = size.minDimension * 0.5f,
-            center = Offset(size.width * 0.5f, size.height * 1.05f)
-        )
+        val w = size.width
+        val h = size.height
+        val path = Path().apply {
+            moveTo(w * 0.95f, h * 1.0f)
+            lineTo(w * 0.95f, h * 0.74f)
+            cubicTo(w * 0.95f, h * 0.62f, w * 0.80f, h * 0.55f, w * 0.68f, h * 0.50f)
+            cubicTo(w * 0.63f, h * 0.47f, w * 0.60f, h * 0.44f, w * 0.60f, h * 0.40f)
+            cubicTo(w * 0.68f, h * 0.36f, w * 0.72f, h * 0.28f, w * 0.66f, h * 0.22f)
+            cubicTo(w * 0.70f, h * 0.18f, w * 0.68f, h * 0.13f, w * 0.62f, h * 0.09f)
+            cubicTo(w * 0.54f, h * 0.02f, w * 0.34f, h * 0.03f, w * 0.24f, h * 0.14f)
+            cubicTo(w * 0.16f, h * 0.22f, w * 0.16f, h * 0.32f, w * 0.22f, h * 0.40f)
+            lineTo(w * 0.20f, h * 0.58f)
+            cubicTo(w * 0.15f, h * 0.63f, w * 0.05f, h * 0.68f, w * 0.05f, h * 0.80f)
+            lineTo(w * 0.05f, h * 1.0f)
+            close()
+        }
+        drawPath(path, color = color.copy(alpha = 0.62f))
     }
 }
 
-/** A stylised concentric-ring seal, standing in for an official emblem without copying one. */
+/**
+ * A generic pillar-on-a-base silhouette — evokes "official emblem" the way currency worldwide
+ * uses column/crest motifs, without reproducing the Ashoka Pillar's actual sculpted lions or
+ * wheel artwork.
+ */
 @Composable
-private fun EmblemSeal(color: Color, modifier: Modifier = Modifier) {
+private fun PillarEmblem(color: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
-        val strokeWidth = size.minDimension * 0.09f
-        drawCircle(color = color.copy(alpha = 0.55f), radius = size.minDimension / 2f, style = Stroke(width = strokeWidth))
-        drawCircle(color = color.copy(alpha = 0.55f), radius = size.minDimension * 0.22f)
+        val w = size.width
+        val h = size.height
+        val tone = color.copy(alpha = 0.6f)
+        drawOval(color = tone, topLeft = Offset(w * 0.15f, h * 0.08f), size = Size(w * 0.7f, h * 0.28f))
+        drawRect(color = tone, topLeft = Offset(w * 0.4f, h * 0.32f), size = Size(w * 0.2f, h * 0.5f))
+        drawLine(
+            color = tone,
+            start = Offset(w * 0.08f, h * 0.92f),
+            end = Offset(w * 0.92f, h * 0.92f),
+            strokeWidth = h * 0.1f
+        )
     }
 }
 
@@ -466,6 +527,22 @@ private fun DrawScope.drawSecurityThread() {
         end = Offset(x + 1.dp.toPx(), size.height),
         strokeWidth = 0.6.dp.toPx()
     )
+}
+
+/** Small raised-line marks near the edge, echoing the tactile identification bars real notes
+ *  carry for visually impaired users — count grows with denomination. */
+private fun DrawScope.drawBleedLines(base: Color, count: Int) {
+    val color = base.copy(alpha = 0.5f)
+    val x = size.width * 0.975f
+    val lineHeight = size.height * 0.09f
+    val gap = lineHeight * 0.6f
+    val totalHeight = count * lineHeight + (count - 1) * gap
+    var y = (size.height - totalHeight) / 2f
+    val strokeWidth = 1.4.dp.toPx()
+    repeat(count) {
+        drawLine(color = color, start = Offset(x, y), end = Offset(x, y + lineHeight), strokeWidth = strokeWidth)
+        y += lineHeight + gap
+    }
 }
 
 /** A soft diagonal highlight standing in for the sheen printed currency has under light. */
