@@ -1,0 +1,24 @@
+# Machine-specific — points at this computer's Android SDK install
+local.properties
+
+# Build outputs
+*.apk
+*.aab
+*.ap_
+*.dex
+**/build/
+.gradle/
+.kotlin/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# Gradle wrapper jar is fetched on demand; keep the properties/scripts only
+gradle/wrapper/gradle-wrapper.jar
+
+# Log/temp
+*.log
+captures/
+.cxx/

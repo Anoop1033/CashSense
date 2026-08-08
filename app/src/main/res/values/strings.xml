@@ -1,0 +1,4 @@
+<resources>
+    <string name="app_name">CashSense</string>
+    <string name="notification_listener_label">CashSense Transaction Detector</string>
+</resources>

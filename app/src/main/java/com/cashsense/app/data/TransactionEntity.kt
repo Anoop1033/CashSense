@@ -1,0 +1,34 @@
+package com.cashsense.app.data
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+object TxDirection {
+    const val DEBIT = "DEBIT"
+    const val CREDIT = "CREDIT"
+}
+
+object TxStatus {
+    const val PENDING = "PENDING"
+    const val CONFIRMED = "CONFIRMED"
+    const val DISMISSED = "DISMISSED"
+}
+
+object TxSource {
+    const val AUTO = "AUTO"
+    const val MANUAL = "MANUAL"
+    const val UPI = "UPI"
+}
+
+@Entity(tableName = "transactions")
+data class TransactionEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val amountPaise: Long,
+    val direction: String,
+    val status: String,
+    val source: String,
+    val sourcePackage: String?,
+    val note: String?,
+    val rawText: String?,
+    val timestampMillis: Long
+)
