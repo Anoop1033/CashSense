@@ -61,7 +61,29 @@ class WalletRepository(
         prefs.setOnboarded(true)
     }
 
+    /**
+     * Records a notification-detected transaction, unless it looks like another announcement of
+     * one already seen.
+     *
+     * A single payment typically gets announced several times over: the bank's SMS, a caller-ID
+     * app mirroring that SMS, and the bank's email all arrive separately, and Android re-posts a
+     * notification every time it is updated. Since none of them carry a shared transaction ID we
+     * could match on, an identical amount and direction landing inside [DUPLICATE_WINDOW_MILLIS]
+     * is treated as the same payment rather than a new one.
+     *
+     * The trade-off is deliberate: genuinely paying the same amount twice inside that window
+     * records only once (recoverable — the user can add the second by hand), whereas the reverse
+     * default floods the review list with triplicates on every single payment.
+     */
     suspend fun addPendingFromNotification(parsed: ParsedTransaction) {
+        val now = System.currentTimeMillis()
+        val alreadySeen = dao.countSimilarSince(
+            amountPaise = parsed.amountPaise,
+            direction = parsed.direction.name,
+            sinceMillis = now - DUPLICATE_WINDOW_MILLIS
+        ) > 0
+        if (alreadySeen) return
+
         dao.insert(
             TransactionEntity(
                 amountPaise = parsed.amountPaise,
@@ -71,7 +93,7 @@ class WalletRepository(
                 sourcePackage = parsed.sourcePackage,
                 note = null,
                 rawText = parsed.rawText,
-                timestampMillis = System.currentTimeMillis()
+                timestampMillis = now
             )
         )
     }
@@ -136,5 +158,14 @@ class WalletRepository(
     suspend fun resetWallet() {
         dao.clearAll()
         prefs.setOnboarded(false)
+    }
+
+    private companion object {
+        /**
+         * How long after recording a transaction an identical one is treated as an echo of it.
+         * Sized for the slowest of the parallel announcements — a bank's email can trail its SMS
+         * by a couple of minutes.
+         */
+        const val DUPLICATE_WINDOW_MILLIS = 3 * 60 * 1000L
     }
 }

@@ -1,7 +1,9 @@
 package com.cashsense.app.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UpiPaymentTest {
@@ -65,5 +67,29 @@ class UpiPaymentTest {
     fun `returns nulls for unrecognisable qr content`() {
         val payload = UpiPayment.parseQrContent("https://example.com/not-a-upi-code")
         assertNull(payload.vpa)
+    }
+
+    @Test
+    fun `flags a qr carrying a merchant category code as a merchant`() {
+        val payload = UpiPayment.parseQrContent("upi://pay?pa=shop%40bank&pn=Corner%20Shop&mc=5411")
+        assertTrue(payload.isMerchant)
+    }
+
+    @Test
+    fun `treats a qr without a merchant category code as person to person`() {
+        val payload = UpiPayment.parseQrContent("upi://pay?pa=friend%40bank&pn=Friend&am=250")
+        assertFalse(payload.isMerchant)
+    }
+
+    @Test
+    fun `treats an all zero merchant category code as person to person`() {
+        val payload = UpiPayment.parseQrContent("upi://pay?pa=friend%40bank&mc=0000")
+        assertFalse(payload.isMerchant)
+    }
+
+    @Test
+    fun `treats a bare vpa as person to person`() {
+        val payload = UpiPayment.parseQrContent("someone@upi")
+        assertFalse(payload.isMerchant)
     }
 }

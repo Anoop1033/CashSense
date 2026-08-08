@@ -5,6 +5,16 @@ import java.net.URLEncoder
 
 enum class UpiStatus { SUCCESS, FAILURE, SUBMITTED, UNKNOWN }
 
+/**
+ * What we actually know about who is being paid.
+ *
+ * Only a scanned QR reveals this: it either carries a merchant category code or it doesn't. A
+ * hand-typed UPI ID tells us nothing either way, and that case is deliberately [UNKNOWN] rather
+ * than assumed personal — guessing "personal" would nag people paying a merchant whose ID they
+ * happened to type instead of scan.
+ */
+enum class PayeeKind { MERCHANT, PERSONAL, UNKNOWN }
+
 data class UpiResponse(
     val status: UpiStatus,
     val txnRef: String?,
@@ -12,7 +22,22 @@ data class UpiResponse(
     val responseCode: String?
 )
 
-data class UpiQrPayload(val vpa: String?, val payeeName: String?, val amountPaise: Long?)
+data class UpiQrPayload(
+    val vpa: String?,
+    val payeeName: String?,
+    val amountPaise: Long?,
+    /**
+     * True when the QR carries a merchant category code ("mc"), which is how NPCI's UPI Linking
+     * Specification marks a person-to-merchant collection QR; personal QRs omit it.
+     *
+     * This matters because NPCI circular UPI-OC-76A (effective 1 Apr 2024) requires payer apps to
+     * disallow *person-to-person* payments initiated through the UPI intent mechanism (initiation
+     * modes 04/05) — the exact mechanism [buildPaymentUri] uses. Google Pay surfaces that block as
+     * a misleading "you have exceeded the bank limit" message, so CashSense checks this up front
+     * rather than sending the user into an error it cannot do anything about.
+     */
+    val isMerchant: Boolean = false
+)
 
 /**
  * Builds and interprets standard UPI deep-link ("upi://pay?...") requests, per NPCI's UPI
@@ -89,7 +114,12 @@ object UpiPayment {
             }.toMap()
 
             val amountPaise = params["am"]?.toDoubleOrNull()?.let { Math.round(it * 100) }
-            return UpiQrPayload(vpa = params["pa"], payeeName = params["pn"], amountPaise = amountPaise)
+            return UpiQrPayload(
+                vpa = params["pa"],
+                payeeName = params["pn"],
+                amountPaise = amountPaise,
+                isMerchant = isMerchantCode(params["mc"])
+            )
         }
 
         val looksLikeBareVpa = trimmed.contains("@") && !trimmed.contains(" ") && !trimmed.contains("://")
@@ -98,6 +128,15 @@ object UpiPayment {
         } else {
             UpiQrPayload(vpa = null, payeeName = null, amountPaise = null)
         }
+    }
+
+    /**
+     * A merchant category code is a 4-digit ISO 18245 value. Some generators pad an absent code
+     * out with zeroes, so an all-zero code counts as "not a merchant" rather than as a real one.
+     */
+    private fun isMerchantCode(raw: String?): Boolean {
+        val code = raw?.trim().orEmpty()
+        return code.isNotEmpty() && code.all { it.isDigit() } && code.any { it != '0' }
     }
 
     private fun paiseToAmountString(paise: Long): String {

@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.cashsense.app.data.WalletRepository
+import com.cashsense.app.domain.PayeeKind
 import com.cashsense.app.domain.UpiPayment
 import com.cashsense.app.domain.UpiStatus
 import com.journeyapps.barcodescanner.ScanContract
@@ -58,13 +59,16 @@ fun PayViaUpiDialog(
     onDismiss: () -> Unit,
     initialVpa: String = "",
     initialPayeeName: String = "",
-    initialAmountPaise: Long? = null
+    initialAmountPaise: Long? = null,
+    initialPayeeKind: PayeeKind = PayeeKind.UNKNOWN
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
     var vpa by remember { mutableStateOf(initialVpa) }
     var payeeName by remember { mutableStateOf(initialPayeeName) }
+    var payeeKind by remember { mutableStateOf(initialPayeeKind) }
+    var overrideP2pBlock by remember { mutableStateOf(false) }
     var amountText by remember {
         mutableStateOf(
             initialAmountPaise?.let { paise ->
@@ -85,6 +89,8 @@ fun PayViaUpiDialog(
             val payload = UpiPayment.parseQrContent(content)
             if (payload.vpa != null) {
                 vpa = payload.vpa
+                payeeKind = if (payload.isMerchant) PayeeKind.MERCHANT else PayeeKind.PERSONAL
+                overrideP2pBlock = false
                 payload.payeeName?.let { payeeName = it }
                 payload.amountPaise?.let { paise ->
                     val rupees = paise / 100.0
@@ -121,7 +127,19 @@ fun PayViaUpiDialog(
                 resultInfo = UpiResultInfo("Payment successful", "Recorded: paid to $payeeLabel")
             }
             UpiStatus.FAILURE -> {
-                resultInfo = UpiResultInfo("Payment failed or cancelled", "Nothing was recorded in your wallet.")
+                // A rejection on a payee we couldn't classify is very often the P2P-via-intent
+                // rule rather than anything the user did wrong, and UPI apps report it as a
+                // confusing "limit exceeded" — so name the likely cause instead of leaving them
+                // to guess at a limit they haven't actually hit.
+                val hint = if (payeeKind == PayeeKind.MERCHANT) {
+                    "Nothing was recorded in your wallet."
+                } else {
+                    "Nothing was recorded in your wallet. If your UPI app mentioned a bank limit, " +
+                        "that is usually misleading: since April 2024 UPI blocks person-to-person " +
+                        "payments started from another app. Paying an individual works from your " +
+                        "UPI app directly, and CashSense will still record it from the notification."
+                }
+                resultInfo = UpiResultInfo("Payment failed or cancelled", hint)
             }
             UpiStatus.SUBMITTED, UpiStatus.UNKNOWN -> {
                 scope.launch { repository.addUpiPayment(amountPaise, payeeLabel, confirmed = false) }
@@ -132,6 +150,11 @@ fun PayViaUpiDialog(
             }
         }
     }
+
+    // Only a QR that positively identified a personal payee justifies warning up front. An
+    // unknown (hand-typed) payee just attempts the payment; if UPI does reject it as P2P, the
+    // failure message below explains why rather than pre-emptively nagging.
+    val blockedAsP2p = payeeKind == PayeeKind.PERSONAL && !overrideP2pBlock
 
     fun startPayment() {
         val amount = amountText.toDoubleOrNull()
@@ -172,7 +195,13 @@ fun PayViaUpiDialog(
                     ) {
                         OutlinedTextField(
                             value = vpa,
-                            onValueChange = { vpa = it },
+                            onValueChange = {
+                                vpa = it
+                                // Editing by hand discards whatever a scan had established, and a
+                                // typed address says nothing about the payee either way.
+                                payeeKind = PayeeKind.UNKNOWN
+                                overrideP2pBlock = false
+                            },
                             label = { Text("UPI ID") },
                             singleLine = true,
                             modifier = Modifier.weight(1f)
@@ -210,6 +239,20 @@ fun PayViaUpiDialog(
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth()
                     )
+                    if (blockedAsP2p && vpa.isNotBlank()) {
+                        Text(
+                            "This looks like a personal UPI ID rather than a shop. Since April 2024, " +
+                                "UPI rules stop apps like CashSense from starting person-to-person " +
+                                "payments — your UPI app rejects them with a misleading \"you have " +
+                                "exceeded the bank limit\" message. Pay directly in your UPI app " +
+                                "instead, and CashSense will record it from the payment notification.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        TextButton(onClick = { overrideP2pBlock = true }) {
+                            Text("Try paying anyway")
+                        }
+                    }
                     errorMessage?.let {
                         Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
                     }
@@ -217,10 +260,10 @@ fun PayViaUpiDialog(
             }
         },
         confirmButton = {
-            if (resultInfo != null) {
-                TextButton(onClick = onDismiss) { Text("Done") }
-            } else {
-                TextButton(onClick = { startPayment() }) { Text("Pay") }
+            when {
+                resultInfo != null -> TextButton(onClick = onDismiss) { Text("Done") }
+                blockedAsP2p && vpa.isNotBlank() -> TextButton(onClick = onDismiss) { Text("Got it") }
+                else -> TextButton(onClick = { startPayment() }) { Text("Pay") }
             }
         },
         dismissButton = {

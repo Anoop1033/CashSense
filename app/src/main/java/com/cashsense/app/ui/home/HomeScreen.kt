@@ -59,6 +59,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.cashsense.app.data.Transaction
 import com.cashsense.app.data.WalletRepository
+import com.cashsense.app.domain.PayeeKind
 import com.cashsense.app.domain.TransactionDirection
 import com.cashsense.app.domain.UpiPayment
 import com.cashsense.app.ui.common.formatPaiseAsRupees
@@ -70,7 +71,12 @@ import com.journeyapps.barcodescanner.ScanContract
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 
-private data class PayPrefill(val vpa: String, val payeeName: String, val amountPaise: Long?)
+private data class PayPrefill(
+    val vpa: String,
+    val payeeName: String,
+    val amountPaise: Long?,
+    val payeeKind: PayeeKind
+)
 
 @Composable
 fun HomeScreen(repository: WalletRepository) {
@@ -89,7 +95,16 @@ fun HomeScreen(repository: WalletRepository) {
         val content = result.contents
         payPrefill = if (content != null) {
             val payload = UpiPayment.parseQrContent(content)
-            PayPrefill(payload.vpa ?: "", payload.payeeName ?: "", payload.amountPaise)
+            PayPrefill(
+                vpa = payload.vpa ?: "",
+                payeeName = payload.payeeName ?: "",
+                amountPaise = payload.amountPaise,
+                payeeKind = when {
+                    payload.vpa == null -> PayeeKind.UNKNOWN
+                    payload.isMerchant -> PayeeKind.MERCHANT
+                    else -> PayeeKind.PERSONAL
+                }
+            )
         } else {
             null
         }
@@ -239,6 +254,7 @@ fun HomeScreen(repository: WalletRepository) {
             initialVpa = payPrefill?.vpa ?: "",
             initialPayeeName = payPrefill?.payeeName ?: "",
             initialAmountPaise = payPrefill?.amountPaise,
+            initialPayeeKind = payPrefill?.payeeKind ?: PayeeKind.UNKNOWN,
             onDismiss = {
                 showPayDialog = false
                 payPrefill = null
