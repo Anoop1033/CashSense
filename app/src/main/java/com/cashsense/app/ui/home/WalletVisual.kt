@@ -334,7 +334,7 @@ private fun NoteVisual(
                     color = textColor,
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .size(width = 20.dp, height = 30.dp)
+                        .size(width = 26.dp, height = 32.dp)
                 )
                 Text(
                     text = "$value",
@@ -419,39 +419,60 @@ private fun CoinVisual(
 }
 
 /**
- * A generic side-profile bust — the universal "portrait side of currency" convention used on
- * coins and banknotes worldwide. Deliberately featureless (no glasses, no specific likeness) so
- * it reads as "a portrait" without depicting any real person's photograph or engraving.
+ * A bald head, round wire-frame glasses, and a draped shawl over the shoulders — the iconic
+ * shorthand countless respectful illustrations, stamps, and murals use to evoke Gandhi, built
+ * from plain geometry (circles, an oval, straight lines). It reads as recognisable because
+ * those elements are iconic on their own, not because this traces the specific 1946 photograph
+ * the RBI engraving is based on or copies the note's own artwork — there's no attempt at facial
+ * proportions, likeness, or the engraving's linework.
  */
 @Composable
 private fun PortraitSilhouette(color: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
         val w = size.width
         val h = size.height
-        val path = Path().apply {
-            moveTo(w * 0.92f, h * 1.0f)
-            lineTo(w * 0.92f, h * 0.70f)
-            cubicTo(w * 0.92f, h * 0.58f, w * 0.78f, h * 0.52f, w * 0.66f, h * 0.47f)
-            cubicTo(w * 0.60f, h * 0.44f, w * 0.58f, h * 0.40f, w * 0.60f, h * 0.36f)
-            cubicTo(w * 0.66f, h * 0.33f, w * 0.70f, h * 0.27f, w * 0.65f, h * 0.21f)
-            cubicTo(w * 0.69f, h * 0.16f, w * 0.66f, h * 0.11f, w * 0.59f, h * 0.075f)
-            cubicTo(w * 0.50f, h * 0.02f, w * 0.32f, h * 0.02f, w * 0.22f, h * 0.12f)
-            cubicTo(w * 0.14f, h * 0.20f, w * 0.14f, h * 0.30f, w * 0.20f, h * 0.38f)
-            lineTo(w * 0.18f, h * 0.56f)
-            cubicTo(w * 0.13f, h * 0.61f, w * 0.04f, h * 0.66f, w * 0.04f, h * 0.78f)
-            lineTo(w * 0.04f, h * 1.0f)
+        val tone = color.copy(alpha = 0.75f)
+
+        val shoulders = Path().apply {
+            moveTo(w * 0.05f, h * 1.0f)
+            lineTo(w * 0.05f, h * 0.86f)
+            cubicTo(w * 0.05f, h * 0.70f, w * 0.26f, h * 0.62f, w * 0.5f, h * 0.62f)
+            cubicTo(w * 0.74f, h * 0.62f, w * 0.95f, h * 0.70f, w * 0.95f, h * 0.86f)
+            lineTo(w * 0.95f, h * 1.0f)
             close()
         }
-        drawPath(path, color = color.copy(alpha = 0.68f))
-        drawPath(path, color = color.copy(alpha = 0.9f), style = Stroke(width = 0.6.dp.toPx()))
-
-        // A soft highlight patch suggesting a light catch on the cheek/brow — without it the
-        // silhouette reads as a flat paper cutout instead of an engraved portrait.
-        drawOval(
-            color = Color.White.copy(alpha = 0.14f),
-            topLeft = Offset(w * 0.38f, h * 0.20f),
-            size = Size(w * 0.18f, h * 0.16f)
+        drawPath(shoulders, color = tone)
+        drawLine(
+            color = Color.Black.copy(alpha = 0.12f),
+            start = Offset(w * 0.30f, h * 0.68f),
+            end = Offset(w * 0.42f, h * 0.94f),
+            strokeWidth = h * 0.012f
         )
+
+        drawRect(color = tone, topLeft = Offset(w * 0.42f, h * 0.54f), size = Size(w * 0.16f, h * 0.12f))
+
+        val headCx = w * 0.5f
+        val headCy = h * 0.36f
+        val headRx = w * 0.27f
+        val headRy = h * 0.24f
+        drawOval(color = tone, topLeft = Offset(headCx - headRx, headCy - headRy), size = Size(headRx * 2, headRy * 2))
+
+        drawOval(color = tone, topLeft = Offset(headCx - headRx - w * 0.03f, headCy - h * 0.01f), size = Size(w * 0.06f, h * 0.08f))
+        drawOval(color = tone, topLeft = Offset(headCx + headRx - w * 0.03f, headCy - h * 0.01f), size = Size(w * 0.06f, h * 0.08f))
+
+        val lensR = w * 0.10f
+        val lensY = headCy + h * 0.045f
+        val leftCenter = Offset(headCx - w * 0.13f, lensY)
+        val rightCenter = Offset(headCx + w * 0.13f, lensY)
+        val frameStroke = Stroke(width = h * 0.02f)
+        drawCircle(color = tone, radius = lensR, center = leftCenter, style = frameStroke)
+        drawCircle(color = tone, radius = lensR, center = rightCenter, style = frameStroke)
+        drawLine(color = tone, start = Offset(leftCenter.x + lensR, lensY), end = Offset(rightCenter.x - lensR, lensY), strokeWidth = h * 0.015f)
+        drawLine(color = tone, start = Offset(leftCenter.x - lensR, lensY), end = Offset(headCx - headRx, lensY - h * 0.01f), strokeWidth = h * 0.015f)
+        drawLine(color = tone, start = Offset(rightCenter.x + lensR, lensY), end = Offset(headCx + headRx, lensY - h * 0.01f), strokeWidth = h * 0.015f)
+
+        drawOval(color = tone.copy(alpha = 0.9f), topLeft = Offset(headCx - headRx, headCy - headRy), size = Size(headRx * 2, headRy * 2), style = Stroke(width = 0.6.dp.toPx()))
+        drawPath(shoulders, color = tone.copy(alpha = 0.9f), style = Stroke(width = 0.6.dp.toPx()))
     }
 }
 
