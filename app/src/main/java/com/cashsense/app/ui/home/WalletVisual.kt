@@ -335,6 +335,7 @@ private fun NoteVisual(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .size(width = 26.dp, height = 32.dp)
+                        .graphicsLayer { rotationZ = -7f }
                 )
                 Text(
                     text = "$value",
@@ -600,8 +601,10 @@ private fun DrawScope.drawGuillocheLines(base: Color) {
     }
 }
 
-/** A thin inset rule plus small ring accents at each corner — the layered-border treatment
- *  real certificates and banknotes use instead of a single flat outline. */
+/** A thin inset rule — the layered-border treatment real certificates and banknotes use
+ *  instead of a single flat outline. Corner accents were tried here too, but at this card size
+ *  they landed right on top of the numeral/mark and bank-name/seal text in each corner, so the
+ *  frame stays to this one unobtrusive line rather than fighting the content for space. */
 private fun DrawScope.drawFrameOrnaments(base: Color) {
     val tone = base.copy(alpha = 0.28f)
     val inset = 3.dp.toPx()
@@ -612,16 +615,6 @@ private fun DrawScope.drawFrameOrnaments(base: Color) {
         cornerRadius = CornerRadius(5.dp.toPx()),
         style = Stroke(width = 0.5.dp.toPx())
     )
-    val ringRadius = size.minDimension * 0.035f
-    val ringInset = inset + ringRadius + 1.dp.toPx()
-    listOf(
-        Offset(ringInset, ringInset),
-        Offset(size.width - ringInset, ringInset),
-        Offset(ringInset, size.height - ringInset),
-        Offset(size.width - ringInset, size.height - ringInset)
-    ).forEach { corner ->
-        drawCircle(color = tone, radius = ringRadius, center = corner, style = Stroke(width = ringRadius * 0.4f))
-    }
 }
 
 /** The dashed metallic strip real banknotes carry — one of the most recognisable "this is
