@@ -25,9 +25,19 @@ interface TransactionDao {
     fun pendingTransactions(): Flow<List<TransactionEntity>>
 
     /**
+     * Counts transactions already recorded under the bank's own reference for a payment. An exact
+     * identity check, so it can look far enough back to cover a bank email trailing its SMS.
+     */
+    @Query(
+        "SELECT COUNT(*) FROM transactions " +
+            "WHERE referenceId = :referenceId AND timestampMillis >= :sinceMillis"
+    )
+    suspend fun countByReferenceSince(referenceId: String, sinceMillis: Long): Int
+
+    /**
      * Counts transactions of the same value and direction recorded since [sinceMillis], in any
-     * status — used to recognise a repeat announcement of one payment. DISMISSED rows count too:
-     * if the user already rejected one copy, its echoes should not come back.
+     * status — the fallback for messages quoting no reference. DISMISSED rows count too: if the
+     * user already rejected one copy, its echoes should not come back.
      */
     @Query(
         "SELECT COUNT(*) FROM transactions " +

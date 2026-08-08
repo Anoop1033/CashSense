@@ -62,27 +62,39 @@ class WalletRepository(
     }
 
     /**
-     * Records a notification-detected transaction, unless it looks like another announcement of
-     * one already seen.
+     * Records a notification-detected transaction, unless it is another announcement of one
+     * already seen.
      *
-     * A single payment typically gets announced several times over: the bank's SMS, a caller-ID
-     * app mirroring that SMS, and the bank's email all arrive separately, and Android re-posts a
-     * notification every time it is updated. Since none of them carry a shared transaction ID we
-     * could match on, an identical amount and direction landing inside [DUPLICATE_WINDOW_MILLIS]
-     * is treated as the same payment rather than a new one.
+     * A single payment gets announced repeatedly: the bank's SMS, a caller-ID app mirroring that
+     * SMS, the bank's email, and the UPI app's own notification — plus Android re-posting any of
+     * them on update. Two checks separate those echoes from genuinely new payments:
      *
-     * The trade-off is deliberate: genuinely paying the same amount twice inside that window
-     * records only once (recoverable — the user can add the second by hand), whereas the reverse
-     * default floods the review list with triplicates on every single payment.
+     *  1. **By the bank's reference.** Every message the bank originates quotes the same UPI
+     *     reference, so matching on it is exact. Because it is exact, it can look back a full day
+     *     and still catch an email that trailed its SMS by minutes.
+     *
+     *  2. **By amount within [FINGERPRINT_WINDOW_MILLIS].** UPI apps' own notifications quote no
+     *     reference, so pairing one with the bank's SMS needs this fallback. It is a genuine
+     *     guess, which is why the window is deliberately short — long enough for the two to
+     *     arrive, short enough that paying the same amount twice a couple of minutes apart is
+     *     still recorded as two payments.
      */
     suspend fun addPendingFromNotification(parsed: ParsedTransaction) {
         val now = System.currentTimeMillis()
-        val alreadySeen = dao.countSimilarSince(
+
+        val reference = parsed.referenceId
+        if (reference != null) {
+            val seenByReference =
+                dao.countByReferenceSince(reference, now - REFERENCE_WINDOW_MILLIS) > 0
+            if (seenByReference) return
+        }
+
+        val seenByFingerprint = dao.countSimilarSince(
             amountPaise = parsed.amountPaise,
             direction = parsed.direction.name,
-            sinceMillis = now - DUPLICATE_WINDOW_MILLIS
+            sinceMillis = now - FINGERPRINT_WINDOW_MILLIS
         ) > 0
-        if (alreadySeen) return
+        if (seenByFingerprint) return
 
         dao.insert(
             TransactionEntity(
@@ -93,7 +105,8 @@ class WalletRepository(
                 sourcePackage = parsed.sourcePackage,
                 note = null,
                 rawText = parsed.rawText,
-                timestampMillis = now
+                timestampMillis = now,
+                referenceId = reference
             )
         )
     }
@@ -162,10 +175,16 @@ class WalletRepository(
 
     private companion object {
         /**
-         * How long after recording a transaction an identical one is treated as an echo of it.
-         * Sized for the slowest of the parallel announcements — a bank's email can trail its SMS
-         * by a couple of minutes.
+         * How far back to look for a matching bank reference. Generous because the match is an
+         * exact identity, not a guess — the only cost of a long window is catching a slow email.
          */
-        const val DUPLICATE_WINDOW_MILLIS = 3 * 60 * 1000L
+        const val REFERENCE_WINDOW_MILLIS = 24 * 60 * 60 * 1000L
+
+        /**
+         * How far back the amount-only fallback looks, for messages quoting no reference. Kept
+         * short precisely because this one can be wrong: everything past it is treated as a
+         * genuinely new payment.
+         */
+        const val FINGERPRINT_WINDOW_MILLIS = 90 * 1000L
     }
 }

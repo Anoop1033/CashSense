@@ -30,5 +30,7 @@ data class TransactionEntity(
     val sourcePackage: String?,
     val note: String?,
     val rawText: String?,
-    val timestampMillis: Long
+    val timestampMillis: Long,
+    /** The bank's reference (UPI RRN / UTR) when one was quoted — see ParsedTransaction. */
+    val referenceId: String? = null
 )

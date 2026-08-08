@@ -4,13 +4,26 @@ import android.content.Context
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [TransactionEntity::class], version = 1, exportSchema = false)
+@Database(entities = [TransactionEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
 
     abstract fun transactionDao(): TransactionDao
 
     companion object {
+        /**
+         * Adds the bank reference column used to recognise repeat announcements of one payment.
+         * A real migration rather than a destructive one — wallet history is the whole point of
+         * the app, so an upgrade must never drop it.
+         */
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE transactions ADD COLUMN referenceId TEXT")
+            }
+        }
+
         @Volatile private var instance: AppDatabase? = null
 
         fun getInstance(context: Context): AppDatabase =
@@ -19,7 +32,7 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "cashsense.db"
-                ).build().also { instance = it }
+                ).addMigrations(MIGRATION_1_2).build().also { instance = it }
             }
     }
 }
