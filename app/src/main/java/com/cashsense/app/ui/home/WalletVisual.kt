@@ -66,6 +66,9 @@ import com.cashsense.app.ui.theme.DebitRed
 import com.cashsense.app.ui.theme.denominationColor
 import com.cashsense.app.ui.theme.denominationTextColor
 import kotlinx.coroutines.delay
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.sin
 
 @Composable
 fun WalletGrid(
@@ -292,6 +295,7 @@ private fun NoteVisual(
                     drawSecurityThread()
                     drawBleedLines(textColor, bleedLineCount(value))
                     drawSheen()
+                    drawFrameOrnaments(textColor)
                 }
                 .border(0.6.dp, Color.White.copy(alpha = 0.35f), shape)
                 .padding(horizontal = 6.dp, vertical = 4.dp)
@@ -305,6 +309,8 @@ private fun NoteVisual(
                     text = "₹$value",
                     color = textColor,
                     fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Serif,
+                    letterSpacing = 0.3.sp,
                     fontSize = 9.sp
                 )
                 IdentificationMark(value = value, color = textColor, modifier = Modifier.size(9.dp))
@@ -315,6 +321,15 @@ private fun NoteVisual(
                     .weight(1f)
                     .fillMaxWidth()
             ) {
+                Canvas(modifier = Modifier.matchParentSize()) {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(textColor.copy(alpha = 0.14f), Color.Transparent)
+                        ),
+                        radius = size.minDimension * 0.6f,
+                        center = Offset(size.width * 0.24f, size.height * 0.5f)
+                    )
+                }
                 PortraitSilhouette(
                     color = textColor,
                     modifier = Modifier
@@ -346,11 +361,13 @@ private fun NoteVisual(
                     Text(
                         text = "RESERVE BANK OF INDIA",
                         color = textColor.copy(alpha = 0.85f),
+                        fontFamily = FontFamily.Serif,
+                        letterSpacing = 0.4.sp,
                         fontSize = 5.sp,
                         lineHeight = 6.sp
                     )
                 }
-                PillarEmblem(color = textColor, modifier = Modifier.size(width = 10.dp, height = 13.dp))
+                SealEmblem(color = textColor, modifier = Modifier.size(13.dp))
             }
         }
     }
@@ -412,41 +429,74 @@ private fun PortraitSilhouette(color: Color, modifier: Modifier = Modifier) {
         val w = size.width
         val h = size.height
         val path = Path().apply {
-            moveTo(w * 0.95f, h * 1.0f)
-            lineTo(w * 0.95f, h * 0.74f)
-            cubicTo(w * 0.95f, h * 0.62f, w * 0.80f, h * 0.55f, w * 0.68f, h * 0.50f)
-            cubicTo(w * 0.63f, h * 0.47f, w * 0.60f, h * 0.44f, w * 0.60f, h * 0.40f)
-            cubicTo(w * 0.68f, h * 0.36f, w * 0.72f, h * 0.28f, w * 0.66f, h * 0.22f)
-            cubicTo(w * 0.70f, h * 0.18f, w * 0.68f, h * 0.13f, w * 0.62f, h * 0.09f)
-            cubicTo(w * 0.54f, h * 0.02f, w * 0.34f, h * 0.03f, w * 0.24f, h * 0.14f)
-            cubicTo(w * 0.16f, h * 0.22f, w * 0.16f, h * 0.32f, w * 0.22f, h * 0.40f)
-            lineTo(w * 0.20f, h * 0.58f)
-            cubicTo(w * 0.15f, h * 0.63f, w * 0.05f, h * 0.68f, w * 0.05f, h * 0.80f)
-            lineTo(w * 0.05f, h * 1.0f)
+            moveTo(w * 0.92f, h * 1.0f)
+            lineTo(w * 0.92f, h * 0.70f)
+            cubicTo(w * 0.92f, h * 0.58f, w * 0.78f, h * 0.52f, w * 0.66f, h * 0.47f)
+            cubicTo(w * 0.60f, h * 0.44f, w * 0.58f, h * 0.40f, w * 0.60f, h * 0.36f)
+            cubicTo(w * 0.66f, h * 0.33f, w * 0.70f, h * 0.27f, w * 0.65f, h * 0.21f)
+            cubicTo(w * 0.69f, h * 0.16f, w * 0.66f, h * 0.11f, w * 0.59f, h * 0.075f)
+            cubicTo(w * 0.50f, h * 0.02f, w * 0.32f, h * 0.02f, w * 0.22f, h * 0.12f)
+            cubicTo(w * 0.14f, h * 0.20f, w * 0.14f, h * 0.30f, w * 0.20f, h * 0.38f)
+            lineTo(w * 0.18f, h * 0.56f)
+            cubicTo(w * 0.13f, h * 0.61f, w * 0.04f, h * 0.66f, w * 0.04f, h * 0.78f)
+            lineTo(w * 0.04f, h * 1.0f)
             close()
         }
-        drawPath(path, color = color.copy(alpha = 0.62f))
+        drawPath(path, color = color.copy(alpha = 0.68f))
+        drawPath(path, color = color.copy(alpha = 0.9f), style = Stroke(width = 0.6.dp.toPx()))
+
+        // A soft highlight patch suggesting a light catch on the cheek/brow — without it the
+        // silhouette reads as a flat paper cutout instead of an engraved portrait.
+        drawOval(
+            color = Color.White.copy(alpha = 0.14f),
+            topLeft = Offset(w * 0.38f, h * 0.20f),
+            size = Size(w * 0.18f, h * 0.16f)
+        )
     }
 }
 
 /**
- * A generic pillar-on-a-base silhouette — evokes "official emblem" the way currency worldwide
- * uses column/crest motifs, without reproducing the Ashoka Pillar's actual sculpted lions or
- * wheel artwork.
+ * A circular rosette seal with a simple column glyph at its centre — the generic "official
+ * seal" motif used on certificates and currency worldwide, not a reproduction of the Ashoka
+ * Pillar's actual sculpted lions or wheel artwork.
  */
 @Composable
-private fun PillarEmblem(color: Color, modifier: Modifier = Modifier) {
+private fun SealEmblem(color: Color, modifier: Modifier = Modifier) {
     Canvas(modifier = modifier) {
-        val w = size.width
-        val h = size.height
-        val tone = color.copy(alpha = 0.6f)
-        drawOval(color = tone, topLeft = Offset(w * 0.15f, h * 0.08f), size = Size(w * 0.7f, h * 0.28f))
-        drawRect(color = tone, topLeft = Offset(w * 0.4f, h * 0.32f), size = Size(w * 0.2f, h * 0.5f))
+        val d = size.minDimension
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val tone = color.copy(alpha = 0.65f)
+        val outerR = d / 2f
+
+        drawCircle(color = tone, radius = outerR, center = center, style = Stroke(width = d * 0.05f))
+        drawCircle(color = tone, radius = outerR * 0.72f, center = center, style = Stroke(width = d * 0.03f))
+
+        val tickCount = 14
+        for (i in 0 until tickCount) {
+            val angle = (2 * PI * i / tickCount).toFloat()
+            val inner = outerR * 0.80f
+            val outer = outerR * 0.95f
+            val start = Offset(center.x + inner * cos(angle), center.y + inner * sin(angle))
+            val end = Offset(center.x + outer * cos(angle), center.y + outer * sin(angle))
+            drawLine(color = tone, start = start, end = end, strokeWidth = d * 0.02f)
+        }
+
+        val pillarWidth = d * 0.14f
+        drawRect(
+            color = tone,
+            topLeft = Offset(center.x - pillarWidth / 2f, center.y - d * 0.06f),
+            size = Size(pillarWidth, d * 0.30f)
+        )
+        drawOval(
+            color = tone,
+            topLeft = Offset(center.x - d * 0.20f, center.y - d * 0.26f),
+            size = Size(d * 0.40f, d * 0.18f)
+        )
         drawLine(
             color = tone,
-            start = Offset(w * 0.08f, h * 0.92f),
-            end = Offset(w * 0.92f, h * 0.92f),
-            strokeWidth = h * 0.1f
+            start = Offset(center.x - d * 0.24f, center.y + d * 0.24f),
+            end = Offset(center.x + d * 0.24f, center.y + d * 0.24f),
+            strokeWidth = d * 0.045f
         )
     }
 }
@@ -493,19 +543,63 @@ private fun IdentificationMark(value: Int, color: Color, modifier: Modifier = Mo
     }
 }
 
+/** A woven lattice of wavy diagonals standing in for the continuous fine-line engraving
+ *  (guilloche) real security printing uses — plain straight hatching reads as a flat
+ *  illustration, while two interleaved wave families give it the "engine-turned" texture
+ *  that's the single biggest visual cue for "this is currency, not a sticker." */
 private fun DrawScope.drawGuillocheLines(base: Color) {
-    val color = base.copy(alpha = 0.07f)
-    val step = 7.dp.toPx()
-    val strokeWidth = 0.6.dp.toPx()
+    val color = base.copy(alpha = 0.05f)
+    val strokeWidth = 0.5.dp.toPx()
+    val amplitude = size.height * 0.05f
+    val wavelength = size.width * 0.24f
+    val spacing = 5.5.dp.toPx()
+    val segments = 20
+    val twoPi = (2 * PI).toFloat()
+
+    fun wavyDiagonal(startX: Float, phase: Float) {
+        val path = Path()
+        for (i in 0..segments) {
+            val t = i / segments.toFloat()
+            val x = startX + t * size.height
+            val y = t * size.height + amplitude * sin(phase + (x / wavelength) * twoPi)
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        drawPath(path, color = color, style = Stroke(width = strokeWidth))
+    }
+
     var x = -size.height
     while (x < size.width) {
-        drawLine(
-            color = color,
-            start = Offset(x, 0f),
-            end = Offset(x + size.height, size.height),
-            strokeWidth = strokeWidth
-        )
-        x += step
+        wavyDiagonal(x, 0f)
+        x += spacing
+    }
+    x = -size.height
+    while (x < size.width) {
+        wavyDiagonal(x, PI.toFloat())
+        x += spacing * 1.6f
+    }
+}
+
+/** A thin inset rule plus small ring accents at each corner — the layered-border treatment
+ *  real certificates and banknotes use instead of a single flat outline. */
+private fun DrawScope.drawFrameOrnaments(base: Color) {
+    val tone = base.copy(alpha = 0.28f)
+    val inset = 3.dp.toPx()
+    drawRoundRect(
+        color = tone,
+        topLeft = Offset(inset, inset),
+        size = Size(size.width - 2 * inset, size.height - 2 * inset),
+        cornerRadius = CornerRadius(5.dp.toPx()),
+        style = Stroke(width = 0.5.dp.toPx())
+    )
+    val ringRadius = size.minDimension * 0.035f
+    val ringInset = inset + ringRadius + 1.dp.toPx()
+    listOf(
+        Offset(ringInset, ringInset),
+        Offset(size.width - ringInset, ringInset),
+        Offset(ringInset, size.height - ringInset),
+        Offset(size.width - ringInset, size.height - ringInset)
+    ).forEach { corner ->
+        drawCircle(color = tone, radius = ringRadius, center = corner, style = Stroke(width = ringRadius * 0.4f))
     }
 }
 
