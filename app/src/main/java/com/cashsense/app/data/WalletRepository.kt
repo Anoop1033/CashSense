@@ -3,6 +3,7 @@ package com.cashsense.app.data
 import com.cashsense.app.domain.ParsedTransaction
 import com.cashsense.app.domain.TransactionDirection
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 data class Transaction(
@@ -32,6 +33,10 @@ class WalletRepository(
     private val prefs: WalletPrefs
 ) {
     val hasOnboarded: Flow<Boolean> = prefs.hasOnboarded
+
+    val autoApplyDetected: Flow<Boolean> = prefs.autoApplyDetected
+
+    suspend fun setAutoApplyDetected(value: Boolean) = prefs.setAutoApplyDetected(value)
 
     val confirmedTransactions: Flow<List<Transaction>> =
         dao.confirmedTransactions().map { list -> list.map { it.toDomain() } }
@@ -96,11 +101,16 @@ class WalletRepository(
         ) > 0
         if (seenByFingerprint) return
 
+        // Applied straight to the balance unless the user asked to vet detections first. Nothing
+        // is destroyed either way: an applied transaction can be removed again from History,
+        // which is what makes trusting the parser by default reasonable.
+        val autoApply = prefs.autoApplyDetected.first()
+
         dao.insert(
             TransactionEntity(
                 amountPaise = parsed.amountPaise,
                 direction = parsed.direction.name,
-                status = TxStatus.PENDING,
+                status = if (autoApply) TxStatus.CONFIRMED else TxStatus.PENDING,
                 source = TxSource.AUTO,
                 sourcePackage = parsed.sourcePackage,
                 note = null,

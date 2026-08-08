@@ -1,8 +1,10 @@
 package com.cashsense.app.domain
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class TransactionTextParserTest {
@@ -59,6 +61,39 @@ class TransactionTextParserTest {
             text = "Your payment to Ramesh was successful"
         )
         assertNull(result)
+    }
+
+    private fun isDetected(text: String): Boolean =
+        TransactionTextParser.parse("com.some.bank", null, text) != null
+
+    // These matter because a detected payment is applied to the balance without asking: anything
+    // that reads like a transaction but is not one would silently make the balance wrong.
+
+    @Test
+    fun `ignores a payment that has not happened yet`() {
+        assertFalse(isDetected("Rs 500 will be debited from a/c XX1234 on 15-Aug for your SIP"))
+        assertFalse(isDetected("Your autopay mandate of Rs 1,200 is due on 20-Aug"))
+    }
+
+    @Test
+    fun `ignores a payment that did not go through`() {
+        assertFalse(isDetected("Your payment of Rs 500 to SHOP failed. Ref 521234567890"))
+        assertFalse(isDetected("Transaction declined: Rs 2,000 debited amount has been reversed"))
+    }
+
+    @Test
+    fun `ignores somebody requesting money`() {
+        assertFalse(isDetected("RAMESH has requested Rs 500 via UPI collect request"))
+    }
+
+    @Test
+    fun `ignores an otp message quoting an amount`() {
+        assertFalse(isDetected("OTP 458213 for your payment of Rs 500. Do not share with anyone"))
+    }
+
+    @Test
+    fun `still detects a genuine completed payment`() {
+        assertTrue(isDetected("Rs 500.00 debited from a/c XX1234 to SHOP. Ref 521234567890"))
     }
 
     @Test

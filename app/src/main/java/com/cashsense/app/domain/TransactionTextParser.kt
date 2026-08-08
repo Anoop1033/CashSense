@@ -81,12 +81,33 @@ object TransactionTextParser {
         "voucher", "lucky draw", "% off", "discount", "coupon", "reward points"
     )
 
+    /**
+     * Phrases meaning "money did not actually move (yet)". These matter far more now that a
+     * detected payment can go straight into the balance: a scheduled debit, a declined payment or
+     * someone's collect request all read like a transaction to a keyword match, and silently
+     * applying one would leave the balance wrong with nothing prompting the user to look.
+     */
+    private val notCompletedVetoKeywords = listOf(
+        // Yet to happen.
+        "will be debited", "will be credited", "will be deducted", "is due", "due on",
+        "due date", "scheduled", "mandate", "autopay", "standing instruction",
+        // Did not happen.
+        "failed", "declined", "unsuccessful", "was not processed", "could not be processed",
+        "has been reversed", "will be reversed", "on hold", "pending approval",
+        // Somebody asking, not a payment.
+        "collect request", "payment request", "has requested", "is requesting",
+        "requesting money", "requests rs", "requests ₹",
+        // Codes and warnings that quote amounts.
+        "otp", "one time password", "one-time password", "do not share", "never share"
+    )
+
     fun parse(packageName: String, title: String?, text: String?): ParsedTransaction? {
         val combined = listOfNotNull(title, text).joinToString(" ").trim()
         if (combined.isEmpty()) return null
 
         val lower = combined.lowercase()
         if (promoVetoKeywords.any { lower.contains(it) }) return null
+        if (notCompletedVetoKeywords.any { lower.contains(it) }) return null
 
         val match = amountRegex.find(combined) ?: bareAmountRegex.find(combined) ?: return null
         val amount = match.groupValues[1].replace(",", "").toDoubleOrNull() ?: return null
