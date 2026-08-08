@@ -335,7 +335,10 @@ private fun NoteVisual(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .size(width = 26.dp, height = 32.dp)
-                        .graphicsLayer { rotationZ = -7f }
+                        .graphicsLayer {
+                            rotationY = -22f
+                            cameraDistance = 24f * density
+                        }
                 )
                 Text(
                     text = "$value",
