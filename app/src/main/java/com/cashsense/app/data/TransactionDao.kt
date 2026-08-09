@@ -35,16 +35,21 @@ interface TransactionDao {
     suspend fun countByReferenceSince(referenceId: String, sinceMillis: Long): Int
 
     /**
-     * Counts transactions of the same value and direction recorded since [sinceMillis], in any
-     * status — the fallback for messages quoting no reference. DISMISSED rows count too: if the
-     * user already rejected one copy, its echoes should not come back.
+     * The references of transactions of the same value and direction recorded since [sinceMillis],
+     * in any status. Returns the references rather than a count because whether a same-valued
+     * neighbour is an echo or a separate payment depends on what reference it carries. DISMISSED
+     * rows are included: if the user already rejected one copy, its echoes should not come back.
      */
     @Query(
-        "SELECT COUNT(*) FROM transactions " +
+        "SELECT referenceId FROM transactions " +
             "WHERE amountPaise = :amountPaise AND direction = :direction " +
             "AND timestampMillis >= :sinceMillis"
     )
-    suspend fun countSimilarSince(amountPaise: Long, direction: String, sinceMillis: Long): Int
+    suspend fun referencesOfSimilarSince(
+        amountPaise: Long,
+        direction: String,
+        sinceMillis: Long
+    ): List<String?>
 
     @Query("DELETE FROM transactions")
     suspend fun clearAll()

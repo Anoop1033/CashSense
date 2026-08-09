@@ -9,12 +9,24 @@ import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore(name = "cashsense_prefs")
 
-class WalletPrefs(private val context: Context) {
+/**
+ * The settings the wallet depends on, behind an interface so the repository can be exercised in
+ * plain JVM tests — the DataStore-backed implementation needs a Context, which unit tests have no
+ * way to supply.
+ */
+interface WalletPreferences {
+    val hasOnboarded: Flow<Boolean>
+    val autoApplyDetected: Flow<Boolean>
+    suspend fun setOnboarded(value: Boolean)
+    suspend fun setAutoApplyDetected(value: Boolean)
+}
+
+class WalletPrefs(private val context: Context) : WalletPreferences {
 
     private val onboardedKey = booleanPreferencesKey("has_onboarded")
     private val autoApplyKey = booleanPreferencesKey("auto_apply_detected")
 
-    val hasOnboarded: Flow<Boolean> =
+    override val hasOnboarded: Flow<Boolean> =
         context.dataStore.data.map { it[onboardedKey] ?: false }
 
     /**
@@ -22,14 +34,14 @@ class WalletPrefs(private val context: Context) {
      * confirmed. On by default: a balance that only updates once you tap "Confirm" is stale
      * exactly when you'd want to glance at it, which defeats the point of the wallet view.
      */
-    val autoApplyDetected: Flow<Boolean> =
+    override val autoApplyDetected: Flow<Boolean> =
         context.dataStore.data.map { it[autoApplyKey] ?: true }
 
-    suspend fun setOnboarded(value: Boolean) {
+    override suspend fun setOnboarded(value: Boolean) {
         context.dataStore.edit { it[onboardedKey] = value }
     }
 
-    suspend fun setAutoApplyDetected(value: Boolean) {
+    override suspend fun setAutoApplyDetected(value: Boolean) {
         context.dataStore.edit { it[autoApplyKey] = value }
     }
 }

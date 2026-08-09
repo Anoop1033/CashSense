@@ -5,6 +5,8 @@ import com.cashsense.app.domain.TransactionDirection
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 
 data class Transaction(
     val id: Long,
@@ -30,8 +32,19 @@ private fun TransactionEntity.toDomain() = Transaction(
 
 class WalletRepository(
     private val dao: TransactionDao,
-    private val prefs: WalletPrefs
+    private val prefs: WalletPreferences
 ) {
+    /**
+     * Serialises detection so that checking for a duplicate and recording the transaction happen
+     * as one step.
+     *
+     * Without this they race: apps re-post a notification the instant they update it, so two
+     * handlers can run at once, both look for an existing copy, both find none because neither has
+     * inserted yet, and both then insert. Observed on real payments as pairs of identical rows
+     * milliseconds apart — inside the duplicate window, yet sailing straight through the check.
+     */
+    private val detectionLock = Mutex()
+
     val hasOnboarded: Flow<Boolean> = prefs.hasOnboarded
 
     val autoApplyDetected: Flow<Boolean> = prefs.autoApplyDetected
@@ -84,22 +97,30 @@ class WalletRepository(
      *     arrive, short enough that paying the same amount twice a couple of minutes apart is
      *     still recorded as two payments.
      */
-    suspend fun addPendingFromNotification(parsed: ParsedTransaction) {
+    suspend fun addPendingFromNotification(parsed: ParsedTransaction): Unit = detectionLock.withLock {
         val now = System.currentTimeMillis()
 
         val reference = parsed.referenceId
         if (reference != null) {
             val seenByReference =
                 dao.countByReferenceSince(reference, now - REFERENCE_WINDOW_MILLIS) > 0
-            if (seenByReference) return
+            if (seenByReference) return@withLock
         }
 
-        val seenByFingerprint = dao.countSimilarSince(
+        val neighbours = dao.referencesOfSimilarSince(
             amountPaise = parsed.amountPaise,
             direction = parsed.direction.name,
             sinceMillis = now - FINGERPRINT_WINDOW_MILLIS
-        ) > 0
-        if (seenByFingerprint) return
+        )
+        val looksLikeEcho = if (reference != null) {
+            // Carrying a reference, this is only an echo of a neighbour that carries none — an
+            // app like a UPI wallet that omits it. A neighbour quoting a *different* reference is
+            // proof of a separate payment, so paying the same amount twice still records twice.
+            neighbours.any { it == null }
+        } else {
+            neighbours.isNotEmpty()
+        }
+        if (looksLikeEcho) return@withLock
 
         // Applied straight to the balance unless the user asked to vet detections first. Nothing
         // is destroyed either way: an applied transaction can be removed again from History,

@@ -63,6 +63,45 @@ class TransactionTextParserTest {
         assertNull(result)
     }
 
+    // The three notifications a single real HDFC credit produced on a test device. The SMS and the
+    // email must yield the same reference, because that is what collapses them into one record.
+
+    private val realCreditSms =
+        "Credit Alert! Rs.236.00 credited to HDFC Bank A/c XX2260 on 09-08-26 " +
+            "from VPA 8003078388@pthdfc (UPI 622116409481)"
+
+    private val realCreditEmail =
+        "HDFC Bank InstaAlerts View: Account update for your HDFC Bank A/c We're writing to " +
+            "inform you that Rs.236.00 has been successfully credited to your HDFC Bank account " +
+            "ending in 2260.b. Sender: MAYANK SHARMA (VPA: 8003078388@pthdfc) " +
+            "c. UPI Reference No.: 622116409481 For more details on Service charges and Fees."
+
+    @Test
+    fun `reads the real bank credit sms`() {
+        val result = TransactionTextParser.parse("com.google.android.apps.messaging", null, realCreditSms)
+        assertNotNull(result)
+        assertEquals(23600L, result!!.amountPaise)
+        assertEquals(TransactionDirection.CREDIT, result.direction)
+        assertEquals("622116409481", result.referenceId)
+    }
+
+    @Test
+    fun `reads the real bank credit email`() {
+        val result = TransactionTextParser.parse("com.google.android.gm", null, realCreditEmail)
+        assertNotNull(result)
+        assertEquals(23600L, result!!.amountPaise)
+        assertEquals(TransactionDirection.CREDIT, result.direction)
+        assertEquals("622116409481", result.referenceId)
+    }
+
+    @Test
+    fun `the sms and the email agree on the reference so one payment stays one record`() {
+        val fromSms = TransactionTextParser.parse("com.google.android.apps.messaging", null, realCreditSms)
+        val fromEmail = TransactionTextParser.parse("com.google.android.gm", null, realCreditEmail)
+        assertNotNull(fromSms?.referenceId)
+        assertEquals(fromSms!!.referenceId, fromEmail!!.referenceId)
+    }
+
     private fun isDetected(text: String): Boolean =
         TransactionTextParser.parse("com.some.bank", null, text) != null
 

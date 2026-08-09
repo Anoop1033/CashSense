@@ -234,7 +234,7 @@ fun DenominationCard(
                 pulsing = false
             }
             flight.snapTo(0f)
-            flight.animateTo(1f, animationSpec = tween(durationMillis = 620, easing = FastOutSlowInEasing))
+            flight.animateTo(1f, animationSpec = tween(durationMillis = 780, easing = FastOutSlowInEasing))
             flightSign = 0
         }
     }
@@ -271,19 +271,26 @@ fun DenominationCard(
                 if (flightSign != 0) {
                     val progress = flight.value
                     val travel = if (flightSign < 0) progress else 1f - progress
+                    // Money leaving is handed away over the top of the screen; money arriving
+                    // rises in from below, the same path run backwards.
+                    val towards = if (flightSign < 0) -1f else 1f
                     Box(
                         modifier = Modifier
                             .matchParentSize()
                             .graphicsLayer {
-                                translationX = travel * size.width * 0.6f
-                                translationY = travel * size.height * 0.5f
-                                rotationZ = travel * 16f
-                                rotationY = travel * 24f
-                                cameraDistance = 26f * density
-                                val shrink = 1f - travel * 0.16f
-                                scaleX = shrink
-                                scaleY = shrink
-                                alpha = (1f - travel).coerceIn(0f, 1f)
+                                translationY = towards * travel * size.height * 6f
+                                translationX = travel * size.width * 0.10f
+                                rotationZ = towards * travel * -7f
+                                rotationY = travel * 14f
+                                cameraDistance = 30f * density
+                                // Grows on the way, so the note reads as lifted off the stack and
+                                // held up rather than simply sliding across the card.
+                                val lift = 1f + travel * 0.30f
+                                scaleX = lift
+                                scaleY = lift
+                                // Squared, so it keeps its presence for most of the trip and
+                                // then goes quickly rather than washing out immediately.
+                                alpha = (1f - travel * travel).coerceIn(0f, 1f)
                             }
                     ) {
                         if (isCoin) {
