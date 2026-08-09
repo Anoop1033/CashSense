@@ -18,6 +18,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -30,6 +31,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.cashsense.app.data.WalletRepository
 import com.cashsense.app.service.UpiNotificationListenerService
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @Composable
@@ -38,6 +40,17 @@ fun SettingsScreen(repository: WalletRepository) {
     val scope = rememberCoroutineScope()
     var showResetConfirm by remember { mutableStateOf(false) }
     var listenerEnabled by remember { mutableStateOf(UpiNotificationListenerService.isEnabled(context)) }
+    var listenerConnected by remember { mutableStateOf(UpiNotificationListenerService.isConnected) }
+
+    // Re-check on every visit: the binding can drop while the screen is not in front of the user.
+    LaunchedEffect(Unit) {
+        UpiNotificationListenerService.requestRebindIfEnabled(context)
+        repeat(4) {
+            delay(700)
+            listenerEnabled = UpiNotificationListenerService.isEnabled(context)
+            listenerConnected = UpiNotificationListenerService.isConnected
+        }
+    }
     val autoApply by repository.autoApplyDetected.collectAsState(initial = true)
 
     Scaffold { padding ->
@@ -52,10 +65,17 @@ fun SettingsScreen(repository: WalletRepository) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Automatic transaction detection", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        text = if (listenerEnabled) {
-                            "Notification access is ON. UPI and bank payment notifications are read automatically."
-                        } else {
-                            "Notification access is OFF. Grant it so CashSense can detect UPI payments automatically."
+                        text = when {
+                            !listenerEnabled ->
+                                "Notification access is OFF. Grant it so CashSense can detect payments automatically."
+                            // Permission granted but the system has not bound the listener —
+                            // detection is dead even though everything looks fine.
+                            !listenerConnected ->
+                                "Notification access is granted, but CashSense is not receiving " +
+                                    "notifications right now. This can happen after the app updates. " +
+                                    "Tap Reconnect below."
+                            else ->
+                                "Working. UPI and bank payment notifications are read automatically."
                         },
                         style = MaterialTheme.typography.bodyMedium
                     )
@@ -64,7 +84,22 @@ fun SettingsScreen(repository: WalletRepository) {
                     }) {
                         Text(if (listenerEnabled) "Manage notification access" else "Grant notification access")
                     }
-                    TextButton(onClick = { listenerEnabled = UpiNotificationListenerService.isEnabled(context) }) {
+                    if (listenerEnabled && !listenerConnected) {
+                        OutlinedButton(onClick = {
+                            UpiNotificationListenerService.requestRebindIfEnabled(context)
+                            scope.launch {
+                                // Binding is asynchronous; give it a moment before re-reading.
+                                delay(1200)
+                                listenerConnected = UpiNotificationListenerService.isConnected
+                            }
+                        }) {
+                            Text("Reconnect")
+                        }
+                    }
+                    TextButton(onClick = {
+                        listenerEnabled = UpiNotificationListenerService.isEnabled(context)
+                        listenerConnected = UpiNotificationListenerService.isConnected
+                    }) {
                         Text("Refresh status")
                     }
                 }

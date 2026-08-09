@@ -24,6 +24,21 @@ class UpiNotificationListenerService : NotificationListenerService() {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    override fun onListenerConnected() {
+        isConnected = true
+    }
+
+    /**
+     * Android drops the binding whenever the app is replaced — an update from the Play Store is
+     * enough — and does not always restore it. The permission still reads as granted, so nothing
+     * looks wrong while every payment silently goes undetected. Asking for the binding back is
+     * the documented remedy.
+     */
+    override fun onListenerDisconnected() {
+        isConnected = false
+        requestRebind(ComponentName(this, UpiNotificationListenerService::class.java))
+    }
+
     override fun onNotificationPosted(sbn: StatusBarNotification) {
         val packageName = sbn.packageName
         if (packageName == applicationContext.packageName) return
@@ -43,11 +58,31 @@ class UpiNotificationListenerService : NotificationListenerService() {
     }
 
     companion object {
+        /**
+         * Whether the system currently has the listener bound. Distinct from [isEnabled], which
+         * only reports that permission was granted — the two disagree exactly in the case that
+         * breaks detection silently.
+         */
+        @Volatile
+        var isConnected: Boolean = false
+            private set
+
         fun isEnabled(context: Context): Boolean {
             val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")
                 ?: return false
             val expected = ComponentName(context, UpiNotificationListenerService::class.java).flattenToString()
             return flat.contains(expected)
+        }
+
+        /**
+         * Nudges the system to bind the listener again. Safe to call at any time: it does nothing
+         * unless permission has been granted, and is a no-op when already bound.
+         */
+        fun requestRebindIfEnabled(context: Context) {
+            if (!isEnabled(context)) return
+            runCatching {
+                requestRebind(ComponentName(context, UpiNotificationListenerService::class.java))
+            }
         }
     }
 }
