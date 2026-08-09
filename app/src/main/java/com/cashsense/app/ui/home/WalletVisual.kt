@@ -2,9 +2,12 @@ package com.cashsense.app.ui.home
 
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -33,6 +36,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -60,12 +64,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cashsense.app.domain.DenominationStack
 import com.cashsense.app.domain.DenominationType
-import com.cashsense.app.domain.StackDelta
 import com.cashsense.app.ui.theme.CreditGreen
 import com.cashsense.app.ui.theme.DebitRed
 import com.cashsense.app.ui.theme.denominationColor
 import com.cashsense.app.ui.theme.denominationTextColor
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.sin
@@ -73,10 +77,8 @@ import kotlin.math.sin
 @Composable
 fun WalletGrid(
     stacks: List<DenominationStack>,
-    deltas: List<StackDelta>,
     modifier: Modifier = Modifier
 ) {
-    val deltaByValue = remember(deltas) { deltas.associateBy { it.denomination.value } }
     if (stacks.isEmpty()) {
         Surface(
             modifier = modifier.fillMaxWidth(),
@@ -95,6 +97,14 @@ fun WalletGrid(
     // A plain (non-lazy) grid: there are at most 9 denominations, so laziness would only
     // buy us a crash from nesting a scrollable grid inside the outer LazyColumn.
     // Two columns (not three) so each note is big enough to hold its detail without crowding.
+    // Position in the wallet drives how long each note waits before it moves, so a payment that
+    // touches several denominations plays out as a sequence rather than all at once.
+    val staggerByValue = remember(stacks) {
+        stacks.mapIndexed { index, stack ->
+            stack.denomination.value to minOf(index, 5) * 70
+        }.toMap()
+    }
+
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(24.dp)) {
         stacks.chunked(2).forEach { rowStacks ->
             Row(
@@ -105,8 +115,8 @@ fun WalletGrid(
                     key(stack.denomination.value) {
                         DenominationCard(
                             stack = stack,
-                            delta = deltaByValue[stack.denomination.value],
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.weight(1f),
+                            staggerDelayMillis = staggerByValue[stack.denomination.value] ?: 0
                         )
                     }
                 }
@@ -157,6 +167,23 @@ private fun noteAspectRatio(value: Int): Float = when (value) {
     else -> 1.95f // ₹10
 }
 
+private val devanagariDigits = charArrayOf('०', '१', '२', '३', '४', '५', '६', '७', '८', '९')
+
+/** The denomination in Devanagari numerals, as notes carry it alongside the Latin figure. */
+private fun devanagariNumeral(value: Int): String =
+    value.toString().map { devanagariDigits[it - '0'] }.joinToString("")
+
+/**
+ * A serial-number-shaped string, in the letter-letter-digit + six-figures shape notes use.
+ * Derived from the denomination so it stays put across recompositions instead of flickering,
+ * and deliberately arbitrary — it identifies nothing.
+ */
+private fun serialFor(value: Int): String {
+    val letters = ('A' + (value / 100) % 26).toString() + ('A' + (value / 7) % 26).toString()
+    val digits = (value * 7919 % 1000000).toString().padStart(6, '0')
+    return "0$letters $digits"
+}
+
 /** More lines for higher-value notes — evokes the tactile bleed-mark convention real notes use
  *  for the visually impaired, without claiming to match RBI's actual counts. */
 private fun bleedLineCount(value: Int): Int = when (value) {
@@ -171,8 +198,8 @@ private fun bleedLineCount(value: Int): Int = when (value) {
 @Composable
 fun DenominationCard(
     stack: DenominationStack,
-    delta: StackDelta?,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    staggerDelayMillis: Int = 0
 ) {
     val isCoin = stack.denomination.type == DenominationType.COIN
     val value = stack.denomination.value
@@ -182,13 +209,33 @@ fun DenominationCard(
 
     var pulsing by remember { mutableStateOf(false) }
     var pulseIsCredit by remember { mutableStateOf(true) }
+    /** Which way a note is travelling right now: -1 leaving the stack, +1 arriving, 0 at rest. */
+    var flightSign by remember { mutableIntStateOf(0) }
+    val flight = remember { Animatable(0f) }
+
+    // The card compares against the count it last drew rather than reading a delta computed
+    // upstream. The upstream one is racy: its flow combines balance with the pending list, so a
+    // second emission recomputes the diff against already-updated state and blanks it out before
+    // the card ever reacts. What a card drew last is not something another emission can erase.
+    var lastDrawnCount by remember { mutableIntStateOf(stack.count) }
 
     LaunchedEffect(stack.count) {
-        if (delta != null && delta.change != 0) {
-            pulseIsCredit = delta.change > 0
+        val change = stack.count - lastDrawnCount
+        lastDrawnCount = stack.count
+        if (change != 0) {
+            pulseIsCredit = change > 0
+            // Denominations move one after another rather than all at once, so paying ₹270 reads
+            // as counting notes out of a wallet instead of the whole screen twitching.
+            if (staggerDelayMillis > 0) delay(staggerDelayMillis.toLong())
+            flightSign = if (change > 0) 1 else -1
             pulsing = true
-            delay(450)
-            pulsing = false
+            launch {
+                delay(420)
+                pulsing = false
+            }
+            flight.snapTo(0f)
+            flight.animateTo(1f, animationSpec = tween(durationMillis = 620, easing = FastOutSlowInEasing))
+            flightSign = 0
         }
     }
 
@@ -216,6 +263,35 @@ fun DenominationCard(
                     CoinVisual(value = value, baseColor = baseColor, textColor = textColor, ringColor = ringColor, layers = layers)
                 } else {
                     NoteVisual(value = value, baseColor = baseColor, textColor = textColor, ringColor = ringColor, layers = layers)
+                }
+
+                // A single loose note riding over the stack: on a payment it lifts, tilts and is
+                // drawn off to the side the way one is pulled out and handed over; on money in it
+                // runs the same arc backwards and settles onto the pile.
+                if (flightSign != 0) {
+                    val progress = flight.value
+                    val travel = if (flightSign < 0) progress else 1f - progress
+                    Box(
+                        modifier = Modifier
+                            .matchParentSize()
+                            .graphicsLayer {
+                                translationX = travel * size.width * 0.6f
+                                translationY = travel * size.height * 0.5f
+                                rotationZ = travel * 16f
+                                rotationY = travel * 24f
+                                cameraDistance = 26f * density
+                                val shrink = 1f - travel * 0.16f
+                                scaleX = shrink
+                                scaleY = shrink
+                                alpha = (1f - travel).coerceIn(0f, 1f)
+                            }
+                    ) {
+                        if (isCoin) {
+                            CoinVisual(value = value, baseColor = baseColor, textColor = textColor, ringColor = Color.Transparent, layers = 0)
+                        } else {
+                            NoteVisual(value = value, baseColor = baseColor, textColor = textColor, ringColor = Color.Transparent, layers = 0)
+                        }
+                    }
                 }
 
                 Surface(
@@ -292,13 +368,15 @@ private fun NoteVisual(
                 )
                 .drawBehind {
                     drawGuillocheLines(textColor)
+                    drawLanguagePanel(textColor)
                     drawSecurityThread()
                     drawBleedLines(textColor, bleedLineCount(value))
                     drawSheen()
                     drawFrameOrnaments(textColor)
                 }
                 .border(0.6.dp, Color.White.copy(alpha = 0.35f), shape)
-                .padding(horizontal = 6.dp, vertical = 4.dp)
+                // Extra start inset clears the language panel drawn down the left edge.
+                .padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -340,14 +418,30 @@ private fun NoteVisual(
                             cameraDistance = 24f * density
                         }
                 )
-                Text(
-                    text = "$value",
-                    color = textColor,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontFamily = FontFamily.Serif,
-                    fontSize = 19.sp,
-                    modifier = Modifier.align(Alignment.CenterStart)
-                )
+                // Side by side rather than stacked: a note is far wider than it is tall, and the
+                // higher denominations are proportionally the shortest, so a second line here
+                // overflowed the row and was clipped away to a sliver.
+                Row(
+                    modifier = Modifier.align(Alignment.CenterStart),
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    Text(
+                        text = "$value",
+                        color = textColor,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontFamily = FontFamily.Serif,
+                        fontSize = 18.sp
+                    )
+                    Spacer(modifier = Modifier.size(3.dp))
+                    Text(
+                        text = devanagariNumeral(value),
+                        color = textColor.copy(alpha = 0.88f),
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 8.sp,
+                        modifier = Modifier.padding(bottom = 2.dp)
+                    )
+                }
+
             }
 
             Row(
@@ -371,7 +465,18 @@ private fun NoteVisual(
                         lineHeight = 6.sp
                     )
                 }
-                SealEmblem(color = textColor, modifier = Modifier.size(13.dp))
+                Row(verticalAlignment = Alignment.Bottom) {
+                    // Bottom-right, where notes carry it — clear of both the portrait and the
+                    // count badge that sits over the top-right corner.
+                    Text(
+                        text = serialFor(value),
+                        color = textColor.copy(alpha = 0.72f),
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 4.5.sp
+                    )
+                    Spacer(modifier = Modifier.size(3.dp))
+                    SealEmblem(color = textColor, modifier = Modifier.size(11.dp))
+                }
             }
         }
     }
@@ -653,6 +758,42 @@ private fun DrawScope.drawBleedLines(base: Color, count: Int) {
     repeat(count) {
         drawLine(color = color, start = Offset(x, y), end = Offset(x, y + lineHeight), strokeWidth = strokeWidth)
         y += lineHeight + gap
+    }
+}
+
+/**
+ * The stacked block of short rules down the left side, standing in for the panel of the
+ * denomination repeated in each official language that real notes carry. Rendered as texture
+ * rather than type: at this size the individual lines would be illegible anyway, and it is the
+ * block's silhouette — not its wording — that reads instantly as "banknote".
+ */
+private fun DrawScope.drawLanguagePanel(base: Color) {
+    val lineCount = 9
+    val left = size.width * 0.035f
+    val maxWidth = size.width * 0.062f
+    val blockHeight = size.height * 0.46f
+    val top = (size.height - blockHeight) / 2f
+    val gap = blockHeight / lineCount
+    val strokeWidth = (gap * 0.30f).coerceAtLeast(0.4.dp.toPx())
+
+    // A faint plate behind the rules, the way the panel sits on a slightly different ground.
+    drawRoundRect(
+        color = base.copy(alpha = 0.05f),
+        topLeft = Offset(left - 1.dp.toPx(), top - 2.dp.toPx()),
+        size = Size(maxWidth + 2.dp.toPx(), blockHeight + 4.dp.toPx()),
+        cornerRadius = CornerRadius(1.dp.toPx())
+    )
+
+    for (i in 0 until lineCount) {
+        // Varying lengths keep it reading as a list of words rather than a barcode.
+        val fraction = 0.55f + 0.45f * ((i * 7 % 5) / 4f)
+        val y = top + gap * (i + 0.5f)
+        drawLine(
+            color = base.copy(alpha = 0.34f),
+            start = Offset(left, y),
+            end = Offset(left + maxWidth * fraction, y),
+            strokeWidth = strokeWidth
+        )
     }
 }
 

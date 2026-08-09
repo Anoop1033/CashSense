@@ -205,7 +205,6 @@ fun HomeScreen(repository: WalletRepository) {
             item {
                 WalletGrid(
                     stacks = state.breakdown.stacks,
-                    deltas = state.lastDeltas,
                     modifier = Modifier.fillMaxWidth()
                 )
             }
