@@ -67,8 +67,10 @@ class WalletRepositoryDedupTest {
     private class FakePrefs : WalletPreferences {
         override val hasOnboarded: Flow<Boolean> = flowOf(true)
         override val autoApplyDetected: Flow<Boolean> = flowOf(true)
+        override val lastSeenBalancePaise: Flow<Long?> = flowOf(null)
         override suspend fun setOnboarded(value: Boolean) = Unit
         override suspend fun setAutoApplyDetected(value: Boolean) = Unit
+        override suspend fun setLastSeenBalancePaise(value: Long) = Unit
     }
 
     private fun credit(reference: String?, sourcePackage: String) = ParsedTransaction(

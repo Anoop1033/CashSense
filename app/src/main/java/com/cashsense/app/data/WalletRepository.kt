@@ -51,6 +51,10 @@ class WalletRepository(
 
     suspend fun setAutoApplyDetected(value: Boolean) = prefs.setAutoApplyDetected(value)
 
+    val lastSeenBalancePaise: Flow<Long?> = prefs.lastSeenBalancePaise
+
+    suspend fun setLastSeenBalancePaise(value: Long) = prefs.setLastSeenBalancePaise(value)
+
     val confirmedTransactions: Flow<List<Transaction>> =
         dao.confirmedTransactions().map { list -> list.map { it.toDomain() } }
 

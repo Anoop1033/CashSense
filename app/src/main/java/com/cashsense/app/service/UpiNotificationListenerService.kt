@@ -49,12 +49,33 @@ class UpiNotificationListenerService : NotificationListenerService() {
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
         val body = bigText ?: text
 
-        val parsed = TransactionTextParser.parse(packageName, title, body) ?: return
+        val parsed = TransactionTextParser.parse(packageName, title, body)
+
+        // Temporary, while detection is being chased down on a real phone: without a record of
+        // what actually reached the listener there is no way to tell a notification that never
+        // arrived from one the parser turned down.
+        if (parsed != null || looksMonetary(title, body)) {
+            android.util.Log.d(
+                "CashSenseDetect",
+                "from=$packageName parsed=${parsed != null} " +
+                    "amount=${parsed?.amountPaise} dir=${parsed?.direction} ref=${parsed?.referenceId} " +
+                    "text=${(title.orEmpty() + " | " + body.orEmpty()).take(180)}"
+            )
+        }
+        if (parsed == null) return
 
         val app = application as CashSenseApp
         scope.launch {
             app.repository.addPendingFromNotification(parsed)
         }
+    }
+
+    /** Anything mentioning money at all, so a notification the parser rejects still gets logged. */
+    private fun looksMonetary(title: String?, body: String?): Boolean {
+        val text = (title.orEmpty() + " " + body.orEmpty()).lowercase()
+        return text.contains("rs.") || text.contains("rs ") || text.contains("inr") ||
+            text.contains("₹") || text.contains("credit") || text.contains("debit") ||
+            text.contains("paid")
     }
 
     companion object {

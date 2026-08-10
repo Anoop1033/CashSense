@@ -130,6 +130,13 @@ fun HomeScreen(repository: WalletRepository) {
         }
     }
 
+    // Once the wallet has been on screen long enough for the notes to have moved, record what the
+    // user has now seen — otherwise the same arrival would replay on every open.
+    LaunchedEffect(state.breakdown.totalPaise) {
+        delay(1600)
+        viewModel.markWalletSeen(state.breakdown.totalPaise)
+    }
+
     LaunchedEffect(state.changeEventId) {
         if (state.changeEventId > 0 && state.lastChangePaise != 0L) {
             toastAmountPaise = state.lastChangePaise
@@ -205,6 +212,7 @@ fun HomeScreen(repository: WalletRepository) {
             item {
                 WalletGrid(
                     stacks = state.breakdown.stacks,
+                    seenStacks = state.seenStacks,
                     modifier = Modifier.fillMaxWidth()
                 )
             }

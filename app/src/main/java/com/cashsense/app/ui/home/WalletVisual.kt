@@ -79,9 +79,10 @@ import kotlin.math.sin
 @Composable
 fun WalletGrid(
     stacks: List<DenominationStack>,
+    seenStacks: List<DenominationStack> = stacks,
     modifier: Modifier = Modifier
 ) {
-    if (stacks.isEmpty()) {
+    if (stacks.isEmpty() && seenStacks.isEmpty()) {
         Surface(
             modifier = modifier.fillMaxWidth(),
             color = MaterialTheme.colorScheme.surfaceVariant,
@@ -99,26 +100,44 @@ fun WalletGrid(
     // A plain (non-lazy) grid: there are at most 9 denominations, so laziness would only
     // buy us a crash from nesting a scrollable grid inside the outer LazyColumn.
     // Two columns (not three) so each note is big enough to hold its detail without crowding.
+    //
+    // Denominations the user last saw are kept in the grid even once they are spent, so a note
+    // leaving the wallet can be shown leaving rather than simply being absent on the next frame.
+    // They drop out once their animation has run.
+    val seenCounts = remember(seenStacks) {
+        seenStacks.associate { it.denomination.value to it.count }
+    }
+    val rows = remember(stacks, seenStacks) {
+        val currentByValue = stacks.associateBy { it.denomination.value }
+        val departed = seenStacks.filter { it.denomination.value !in currentByValue }
+        (stacks + departed).sortedByDescending { it.denomination.value }
+    }
+
     // Position in the wallet drives how long each note waits before it moves, so a payment that
     // touches several denominations plays out as a sequence rather than all at once.
-    val staggerByValue = remember(stacks) {
-        stacks.mapIndexed { index, stack ->
+    val staggerByValue = remember(rows) {
+        rows.mapIndexed { index, stack ->
             stack.denomination.value to minOf(index, 5) * 70
         }.toMap()
     }
 
     Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        stacks.chunked(2).forEach { rowStacks ->
+        rows.chunked(2).forEach { rowStacks ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(18.dp)
             ) {
                 rowStacks.forEach { stack ->
-                    key(stack.denomination.value) {
+                    val value = stack.denomination.value
+                    key(value) {
                         DenominationCard(
                             stack = stack,
+                            // Absent from the wallet now means every note of it has gone; the
+                            // card stays only long enough to animate that.
+                            currentCount = if (stacks.any { it.denomination.value == value }) stack.count else 0,
+                            seenCount = seenCounts[value] ?: stack.count,
                             modifier = Modifier.weight(1f),
-                            staggerDelayMillis = staggerByValue[stack.denomination.value] ?: 0
+                            staggerDelayMillis = staggerByValue[value] ?: 0
                         )
                     }
                 }
@@ -201,29 +220,36 @@ private fun bleedLineCount(value: Int): Int = when (value) {
 fun DenominationCard(
     stack: DenominationStack,
     modifier: Modifier = Modifier,
+    currentCount: Int = stack.count,
+    seenCount: Int = stack.count,
     staggerDelayMillis: Int = 0
 ) {
     val isCoin = stack.denomination.type == DenominationType.COIN
     val value = stack.denomination.value
     val baseColor = denominationColor(value)
     val textColor = denominationTextColor(value)
-    val layers = stackLayerCount(stack.count)
+    val layers = stackLayerCount(currentCount)
 
     var pulsing by remember { mutableStateOf(false) }
     var pulseIsCredit by remember { mutableStateOf(true) }
     /** Which way a note is travelling right now: -1 leaving the stack, +1 arriving, 0 at rest. */
     var flightSign by remember { mutableIntStateOf(0) }
     val flight = remember { Animatable(0f) }
+    /** Kept on screen only while its last note flies away, then dropped. */
+    var settled by remember { mutableStateOf(false) }
 
-    // The card compares against the count it last drew rather than reading a delta computed
-    // upstream. The upstream one is racy: its flow combines balance with the pending list, so a
-    // second emission recomputes the diff against already-updated state and blanks it out before
-    // the card ever reacts. What a card drew last is not something another emission can erase.
-    var lastDrawnCount by remember { mutableIntStateOf(stack.count) }
+    // Seeded with the count the user last had in front of them, not the count now. That is what
+    // lets a change that happened while the app was closed still play out on opening it, and what
+    // makes a denomination appearing for the first time animate in rather than blink into place.
+    //
+    // The card also tracks this itself rather than reading a delta computed upstream: that one is
+    // racy, since its flow combines balance with the pending list and a second emission blanks it
+    // out before the card ever reacts.
+    var lastDrawnCount by remember { mutableIntStateOf(seenCount) }
 
-    LaunchedEffect(stack.count) {
-        val change = stack.count - lastDrawnCount
-        lastDrawnCount = stack.count
+    LaunchedEffect(currentCount) {
+        val change = currentCount - lastDrawnCount
+        lastDrawnCount = currentCount
         if (change != 0) {
             pulseIsCredit = change > 0
             // Denominations move one after another rather than all at once, so paying ₹270 reads
@@ -239,7 +265,12 @@ fun DenominationCard(
             flight.animateTo(1f, animationSpec = tween(durationMillis = 780, easing = FastOutSlowInEasing))
             flightSign = 0
         }
+        settled = true
     }
+
+    // A denomination the user has spent entirely is drawn only for as long as its last note takes
+    // to leave; after that there is nothing left to show.
+    if (currentCount <= 0 && settled) return
 
     val scale by animateFloatAsState(
         targetValue = if (pulsing) 1.12f else 1f,
@@ -261,10 +292,15 @@ fun DenominationCard(
     ) {
         NonScalingDensity {
             Box(contentAlignment = Alignment.TopStart) {
-                if (isCoin) {
-                    CoinVisual(value = value, baseColor = baseColor, textColor = textColor, ringColor = ringColor, layers = layers)
-                } else {
-                    NoteVisual(value = value, baseColor = baseColor, textColor = textColor, ringColor = ringColor, layers = layers)
+                // Once the last note of a denomination is spent the stack itself is gone, but the
+                // card holds its place — invisible — so the grid does not jump while that note is
+                // still flying away.
+                Box(modifier = Modifier.graphicsLayer { alpha = if (currentCount > 0) 1f else 0f }) {
+                    if (isCoin) {
+                        CoinVisual(value = value, baseColor = baseColor, textColor = textColor, ringColor = ringColor, layers = layers)
+                    } else {
+                        NoteVisual(value = value, baseColor = baseColor, textColor = textColor, ringColor = ringColor, layers = layers)
+                    }
                 }
 
                 // A single loose note riding over the stack: on a payment it lifts, tilts and is
@@ -310,9 +346,10 @@ fun DenominationCard(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .offset(x = 8.dp, y = (-8).dp)
+                        .graphicsLayer { alpha = if (currentCount > 0) 1f else 0f }
                 ) {
                     AnimatedContent(
-                        targetState = stack.count,
+                        targetState = currentCount,
                         transitionSpec = {
                             val direction = if (targetState > initialState) 1 else -1
                             (slideInVertically { h -> direction * h } + fadeIn())
