@@ -256,8 +256,12 @@ fun DenominationCard(
      * set off — otherwise the note is drawn twice over, once settled in the stack and once flying
      * towards it. A note leaving is the opposite: it has already gone, so the stack shows the
      * reduced count immediately and the one in flight is the note being handed away.
+     *
+     * Starts from the count last seen rather than the current one. Seeded with the current count
+     * it would paint the arriving note once, at rest, in the frame before the effect below could
+     * correct it — a blink of the note in place just as it was about to fly in.
      */
-    var restingCount by remember { mutableIntStateOf(currentCount) }
+    var restingCount by remember { mutableIntStateOf(seenCount) }
 
     LaunchedEffect(currentCount, animateChanges) {
         // While the wallet is not in front of anyone, the change is left pending: the count it
