@@ -41,6 +41,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -52,10 +53,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.cashsense.app.data.Transaction
 import com.cashsense.app.data.WalletRepository
@@ -84,6 +88,7 @@ fun HomeScreen(repository: WalletRepository) {
     val state by viewModel.uiState.collectAsState()
     val haptic = LocalHapticFeedback.current
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
 
     var showManualDialog by remember { mutableStateOf<TransactionDirection?>(null) }
     var reviewingTransaction by remember { mutableStateOf<Transaction?>(null) }
@@ -130,10 +135,27 @@ fun HomeScreen(repository: WalletRepository) {
         }
     }
 
-    // Once the wallet has been on screen long enough for the notes to have moved, record what the
+    // Whether the wallet is actually in front of the user. Everything below hangs off this: the
+    // whole point of the notes moving is that the movement is witnessed, so a payment arriving
+    // while the app is merely minimised must wait rather than play to nobody and be marked seen.
+    var isResumed by remember { mutableStateOf(true) }
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> isResumed = true
+                Lifecycle.Event.ON_PAUSE -> isResumed = false
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // Once the wallet has been watched long enough for the notes to have moved, record what the
     // user has now seen — otherwise the same arrival would replay on every open.
-    LaunchedEffect(state.breakdown.totalPaise) {
-        delay(1600)
+    LaunchedEffect(state.breakdown.totalPaise, isResumed) {
+        if (!isResumed) return@LaunchedEffect
+        delay(2200)
         viewModel.markWalletSeen(state.breakdown.totalPaise)
     }
 
@@ -213,6 +235,7 @@ fun HomeScreen(repository: WalletRepository) {
                 WalletGrid(
                     stacks = state.breakdown.stacks,
                     seenStacks = state.seenStacks,
+                    animateChanges = isResumed,
                     modifier = Modifier.fillMaxWidth()
                 )
             }

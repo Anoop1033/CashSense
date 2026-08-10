@@ -80,6 +80,7 @@ import kotlin.math.sin
 fun WalletGrid(
     stacks: List<DenominationStack>,
     seenStacks: List<DenominationStack> = stacks,
+    animateChanges: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     if (stacks.isEmpty() && seenStacks.isEmpty()) {
@@ -117,7 +118,7 @@ fun WalletGrid(
     // touches several denominations plays out as a sequence rather than all at once.
     val staggerByValue = remember(rows) {
         rows.mapIndexed { index, stack ->
-            stack.denomination.value to minOf(index, 5) * 70
+            stack.denomination.value to minOf(index, 5) * 110
         }.toMap()
     }
 
@@ -136,6 +137,7 @@ fun WalletGrid(
                             // card stays only long enough to animate that.
                             currentCount = if (stacks.any { it.denomination.value == value }) stack.count else 0,
                             seenCount = seenCounts[value] ?: stack.count,
+                            animateChanges = animateChanges,
                             modifier = Modifier.weight(1f),
                             staggerDelayMillis = staggerByValue[value] ?: 0
                         )
@@ -222,6 +224,7 @@ fun DenominationCard(
     modifier: Modifier = Modifier,
     currentCount: Int = stack.count,
     seenCount: Int = stack.count,
+    animateChanges: Boolean = true,
     staggerDelayMillis: Int = 0
 ) {
     val isCoin = stack.denomination.type == DenominationType.COIN
@@ -247,7 +250,12 @@ fun DenominationCard(
     // out before the card ever reacts.
     var lastDrawnCount by remember { mutableIntStateOf(seenCount) }
 
-    LaunchedEffect(currentCount) {
+    LaunchedEffect(currentCount, animateChanges) {
+        // While the wallet is not in front of anyone, the change is left pending: the count it
+        // last drew is deliberately not advanced, so the movement is still owed and plays the
+        // moment the user comes back rather than having happened to an empty screen.
+        if (!animateChanges) return@LaunchedEffect
+
         val change = currentCount - lastDrawnCount
         lastDrawnCount = currentCount
         if (change != 0) {
@@ -262,7 +270,7 @@ fun DenominationCard(
                 pulsing = false
             }
             flight.snapTo(0f)
-            flight.animateTo(1f, animationSpec = tween(durationMillis = 780, easing = FastOutSlowInEasing))
+            flight.animateTo(1f, animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing))
             flightSign = 0
         }
         settled = true
@@ -316,19 +324,24 @@ fun DenominationCard(
                         modifier = Modifier
                             .matchParentSize()
                             .graphicsLayer {
-                                translationY = towards * travel * size.height * 6f
-                                translationX = travel * size.width * 0.10f
-                                rotationZ = towards * travel * -7f
-                                rotationY = travel * 14f
-                                cameraDistance = 30f * density
+                                translationY = towards * travel * size.height * 7f
+                                // Drifts aside as it rises, so the path is a curve rather than a
+                                // straight slide — closer to how a note actually moves through air.
+                                translationX = towards * travel * size.width * 0.22f
+                                rotationZ = towards * travel * -13f
+                                // Turning about its long edge is what makes it read as a sheet of
+                                // paper catching the light rather than a rectangle being dragged.
+                                rotationX = travel * 26f
+                                rotationY = travel * 20f
+                                cameraDistance = 34f * density
                                 // Grows on the way, so the note reads as lifted off the stack and
                                 // held up rather than simply sliding across the card.
-                                val lift = 1f + travel * 0.30f
+                                val lift = 1f + travel * 0.38f
                                 scaleX = lift
                                 scaleY = lift
-                                // Squared, so it keeps its presence for most of the trip and
-                                // then goes quickly rather than washing out immediately.
-                                alpha = (1f - travel * travel).coerceIn(0f, 1f)
+                                // Cubed, so it holds its presence for most of the trip and goes
+                                // only at the very end rather than washing out immediately.
+                                alpha = (1f - travel * travel * travel).coerceIn(0f, 1f)
                             }
                     ) {
                         if (isCoin) {

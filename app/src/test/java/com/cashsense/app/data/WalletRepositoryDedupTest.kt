@@ -53,6 +53,26 @@ class WalletRepositoryDedupTest {
             }.map { it.referenceId }
         }
 
+        override suspend fun latestUnreferencedSimilarSince(
+            amountPaise: Long,
+            direction: String,
+            sinceMillis: Long
+        ): Long? {
+            yield()
+            return rows.lastOrNull {
+                it.amountPaise == amountPaise &&
+                    it.direction == direction &&
+                    it.referenceId == null &&
+                    it.timestampMillis >= sinceMillis
+            }?.id
+        }
+
+        override suspend fun attachReference(id: Long, referenceId: String) {
+            yield()
+            val index = rows.indexOfFirst { it.id == id }
+            if (index >= 0) rows[index] = rows[index].copy(referenceId = referenceId)
+        }
+
         override suspend fun update(entity: TransactionEntity) {
             val index = rows.indexOfFirst { it.id == entity.id }
             if (index >= 0) rows[index] = entity
@@ -147,6 +167,36 @@ class WalletRepositoryDedupTest {
 
             assertEquals(1, dao.rows.size)
         }
+
+    @Test
+    fun `the bank's later message completes the upi app's row instead of duplicating it`() = runTest {
+        val dao = FakeDao()
+        val repository = WalletRepository(dao, FakePrefs())
+
+        // Exactly what a real phone produced: the UPI app first with no reference, the bank's
+        // email a hundred seconds later with one — past the plain amount window.
+        repository.addPendingFromNotification(credit(null, "com.google.android.apps.nbu.paisa.user"))
+        dao.rows[0] = dao.rows[0].copy(timestampMillis = System.currentTimeMillis() - 100_000)
+
+        repository.addPendingFromNotification(credit("622287037996", "com.google.android.gm"))
+
+        assertEquals(1, dao.rows.size)
+        // The row is completed rather than left provisional, so a third announcement is caught.
+        assertEquals("622287037996", dao.rows[0].referenceId)
+    }
+
+    @Test
+    fun `a third announcement of a completed payment changes nothing`() = runTest {
+        val dao = FakeDao()
+        val repository = WalletRepository(dao, FakePrefs())
+
+        repository.addPendingFromNotification(credit(null, "com.gpay"))
+        dao.rows[0] = dao.rows[0].copy(timestampMillis = System.currentTimeMillis() - 100_000)
+        repository.addPendingFromNotification(credit("622287037996", "com.gm"))
+        repository.addPendingFromNotification(credit("622287037996", "com.messaging"))
+
+        assertEquals(1, dao.rows.size)
+    }
 
     @Test
     fun `a reference-carrying announcement does not re-record one already seen without a reference`() =

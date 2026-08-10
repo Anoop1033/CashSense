@@ -51,6 +51,27 @@ interface TransactionDao {
         sinceMillis: Long
     ): List<String?>
 
+    /**
+     * The most recent same-valued transaction recorded without a bank reference. A UPI app
+     * announces a payment the instant it happens but quotes no reference, so such a row is a
+     * provisional record that the bank's own message — arriving later, with a reference — should
+     * complete rather than duplicate.
+     */
+    @Query(
+        "SELECT id FROM transactions " +
+            "WHERE amountPaise = :amountPaise AND direction = :direction " +
+            "AND referenceId IS NULL AND timestampMillis >= :sinceMillis " +
+            "ORDER BY timestampMillis DESC LIMIT 1"
+    )
+    suspend fun latestUnreferencedSimilarSince(
+        amountPaise: Long,
+        direction: String,
+        sinceMillis: Long
+    ): Long?
+
+    @Query("UPDATE transactions SET referenceId = :referenceId WHERE id = :id")
+    suspend fun attachReference(id: Long, referenceId: String)
+
     @Query("DELETE FROM transactions")
     suspend fun clearAll()
 }

@@ -109,22 +109,29 @@ class WalletRepository(
             val seenByReference =
                 dao.countByReferenceSince(reference, now - REFERENCE_WINDOW_MILLIS) > 0
             if (seenByReference) return@withLock
-        }
 
-        val neighbours = dao.referencesOfSimilarSince(
-            amountPaise = parsed.amountPaise,
-            direction = parsed.direction.name,
-            sinceMillis = now - FINGERPRINT_WINDOW_MILLIS
-        )
-        val looksLikeEcho = if (reference != null) {
-            // Carrying a reference, this is only an echo of a neighbour that carries none — an
-            // app like a UPI wallet that omits it. A neighbour quoting a *different* reference is
-            // proof of a separate payment, so paying the same amount twice still records twice.
-            neighbours.any { it == null }
+            // The UPI app announces a payment immediately but quotes no reference; the bank's own
+            // message follows with one, and can lag by minutes. Rather than treat the later, fuller
+            // message as a second payment, it completes the provisional row the app left behind.
+            // Only reference-less rows can be claimed this way — one quoting a different reference
+            // is a genuinely separate payment, so paying the same amount twice still records twice.
+            val provisional = dao.latestUnreferencedSimilarSince(
+                amountPaise = parsed.amountPaise,
+                direction = parsed.direction.name,
+                sinceMillis = now - PROVISIONAL_CLAIM_WINDOW_MILLIS
+            )
+            if (provisional != null) {
+                dao.attachReference(provisional, reference)
+                return@withLock
+            }
         } else {
-            neighbours.isNotEmpty()
+            val neighbours = dao.referencesOfSimilarSince(
+                amountPaise = parsed.amountPaise,
+                direction = parsed.direction.name,
+                sinceMillis = now - FINGERPRINT_WINDOW_MILLIS
+            )
+            if (neighbours.isNotEmpty()) return@withLock
         }
-        if (looksLikeEcho) return@withLock
 
         // Applied straight to the balance unless the user asked to vet detections first. Nothing
         // is destroyed either way: an applied transaction can be removed again from History,
@@ -221,5 +228,13 @@ class WalletRepository(
          * genuinely new payment.
          */
         const val FINGERPRINT_WINDOW_MILLIS = 90 * 1000L
+
+        /**
+         * How far back the bank's message may reach to claim a provisional row a UPI app left.
+         * Wider than the plain amount check because the bank's email is the laggard — observed
+         * arriving a hundred seconds behind the app's own notification — and safer, because only
+         * a row carrying no reference at all can be claimed.
+         */
+        const val PROVISIONAL_CLAIM_WINDOW_MILLIS = 10 * 60 * 1000L
     }
 }
