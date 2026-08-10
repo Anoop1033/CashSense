@@ -234,7 +234,6 @@ fun DenominationCard(
     val value = stack.denomination.value
     val baseColor = denominationColor(value)
     val textColor = denominationTextColor(value)
-    val layers = stackLayerCount(currentCount)
 
     var pulsing by remember { mutableStateOf(false) }
     var pulseIsCredit by remember { mutableStateOf(true) }
@@ -250,6 +249,15 @@ fun DenominationCard(
     // racy, since its flow combines balance with the pending list and a second emission blanks it
     // out before the card ever reacts.
     var lastDrawnCount by remember { mutableIntStateOf(seenCount) }
+    /**
+     * What the stack itself should show while a note is in the air.
+     *
+     * A note arriving has not landed yet, so the stack must still show the count from before it
+     * set off — otherwise the note is drawn twice over, once settled in the stack and once flying
+     * towards it. A note leaving is the opposite: it has already gone, so the stack shows the
+     * reduced count immediately and the one in flight is the note being handed away.
+     */
+    var restingCount by remember { mutableIntStateOf(currentCount) }
 
     LaunchedEffect(currentCount, animateChanges) {
         // While the wallet is not in front of anyone, the change is left pending: the count it
@@ -257,23 +265,33 @@ fun DenominationCard(
         // moment the user comes back rather than having happened to an empty screen.
         if (!animateChanges) return@LaunchedEffect
 
-        val change = currentCount - lastDrawnCount
+        val from = lastDrawnCount
+        val change = currentCount - from
         lastDrawnCount = currentCount
-        if (change != 0) {
-            pulseIsCredit = change > 0
-            // Denominations move one after another rather than all at once, so paying ₹270 reads
-            // as counting notes out of a wallet instead of the whole screen twitching.
-            if (staggerDelayMillis > 0) delay(staggerDelayMillis.toLong())
-            flightSign = if (change > 0) 1 else -1
-            pulsing = true
-            launch {
-                delay(420)
-                pulsing = false
-            }
-            flight.snapTo(0f)
-            flight.animateTo(1f, animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing))
-            flightSign = 0
+        if (change == 0) {
+            restingCount = currentCount
+            return@LaunchedEffect
         }
+
+        pulseIsCredit = change > 0
+        // An arriving note has not landed, so the stack keeps its old count until it does. A
+        // departing one has already left, so the stack drops to the new count at once.
+        restingCount = if (change > 0) from else currentCount
+
+        // Denominations move one after another rather than all at once, so paying ₹270 reads
+        // as counting notes out of a wallet instead of the whole screen twitching.
+        if (staggerDelayMillis > 0) delay(staggerDelayMillis.toLong())
+        flightSign = if (change > 0) 1 else -1
+        pulsing = true
+        launch {
+            delay(420)
+            pulsing = false
+        }
+        flight.snapTo(0f)
+        flight.animateTo(1f, animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing))
+        flightSign = 0
+        // The note has landed; the stack now owns it.
+        restingCount = currentCount
     }
 
     // A denomination spent down to nothing is drawn for as long as it still has a note to send
@@ -299,14 +317,15 @@ fun DenominationCard(
     ) {
         NonScalingDensity {
             Box(contentAlignment = Alignment.TopStart) {
-                // Once the last note of a denomination is spent the stack itself is gone, but the
-                // card holds its place — invisible — so the grid does not jump while that note is
-                // still flying away.
-                Box(modifier = Modifier.graphicsLayer { alpha = if (currentCount > 0) 1f else 0f }) {
+                // Drawn from the resting count, so a note still in the air is not also shown
+                // sitting in the stack. When that count is zero the card keeps its place but
+                // shows nothing — an arrival lands on an empty slot, and the last note of a
+                // denomination can be seen leaving without the grid jumping.
+                Box(modifier = Modifier.graphicsLayer { alpha = if (restingCount > 0) 1f else 0f }) {
                     if (isCoin) {
-                        CoinVisual(value = value, baseColor = baseColor, textColor = textColor, ringColor = ringColor, layers = layers)
+                        CoinVisual(value = value, baseColor = baseColor, textColor = textColor, ringColor = ringColor, layers = stackLayerCount(restingCount))
                     } else {
-                        NoteVisual(value = value, baseColor = baseColor, textColor = textColor, ringColor = ringColor, layers = layers)
+                        NoteVisual(value = value, baseColor = baseColor, textColor = textColor, ringColor = ringColor, layers = stackLayerCount(restingCount))
                     }
                 }
 
@@ -358,10 +377,10 @@ fun DenominationCard(
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .offset(x = 8.dp, y = (-8).dp)
-                        .graphicsLayer { alpha = if (currentCount > 0) 1f else 0f }
+                        .graphicsLayer { alpha = if (restingCount > 0) 1f else 0f }
                 ) {
                     AnimatedContent(
-                        targetState = currentCount,
+                        targetState = restingCount,
                         transitionSpec = {
                             val direction = if (targetState > initialState) 1 else -1
                             (slideInVertically { h -> direction * h } + fadeIn())
