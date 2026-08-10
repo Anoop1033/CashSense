@@ -136,7 +136,10 @@ fun WalletGrid(
                             // Absent from the wallet now means every note of it has gone; the
                             // card stays only long enough to animate that.
                             currentCount = if (stacks.any { it.denomination.value == value }) stack.count else 0,
-                            seenCount = seenCounts[value] ?: stack.count,
+                            // A denomination absent from the wallet the user last saw had none of
+                            // it, not "however many there are now" — otherwise a note appearing
+                            // for the first time has nothing to animate from and blinks into place.
+                            seenCount = seenCounts[value] ?: 0,
                             animateChanges = animateChanges,
                             modifier = Modifier.weight(1f),
                             staggerDelayMillis = staggerByValue[value] ?: 0
@@ -238,8 +241,6 @@ fun DenominationCard(
     /** Which way a note is travelling right now: -1 leaving the stack, +1 arriving, 0 at rest. */
     var flightSign by remember { mutableIntStateOf(0) }
     val flight = remember { Animatable(0f) }
-    /** Kept on screen only while its last note flies away, then dropped. */
-    var settled by remember { mutableStateOf(false) }
 
     // Seeded with the count the user last had in front of them, not the count now. That is what
     // lets a change that happened while the app was closed still play out on opening it, and what
@@ -273,18 +274,16 @@ fun DenominationCard(
             flight.animateTo(1f, animationSpec = tween(durationMillis = 1000, easing = FastOutSlowInEasing))
             flightSign = 0
         }
-        settled = true
     }
 
-    // A denomination the user has spent entirely is drawn only for as long as its last note takes
-    // to leave; after that there is nothing left to show.
-    if (currentCount <= 0 && settled) return
+    // A denomination spent down to nothing is drawn for as long as it still has a note to send
+    // away — either one in the air, or a change that has not been played yet because the wallet
+    // was not being watched. Only once there is nothing owed does the card go.
+    val owesAnimation = currentCount != lastDrawnCount
+    if (currentCount <= 0 && flightSign == 0 && !owesAnimation) return
 
-    val scale by animateFloatAsState(
-        targetValue = if (pulsing) 1.12f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioMediumBouncy),
-        label = "stackScale"
-    )
+    // No scale pulse on the stack itself. Swelling and shrinking the whole card read as a glitch
+    // rather than a transaction, and it drew the eye away from the note actually travelling.
     val ringColor by animateColorAsState(
         targetValue = when {
             !pulsing -> Color.Transparent
@@ -295,7 +294,7 @@ fun DenominationCard(
     )
 
     Column(
-        modifier = modifier.graphicsLayer { scaleX = scale; scaleY = scale },
+        modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         NonScalingDensity {
