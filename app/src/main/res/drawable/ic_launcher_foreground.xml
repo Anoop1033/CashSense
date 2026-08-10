@@ -5,38 +5,42 @@
     android:viewportHeight="108">
 
     <!--
-      A wallet with a card drawn part-way out of it.
+      A brown leather wallet with a note drawn part-way out of it.
 
-      Two things decide whether this reads as a wallet rather than a bag or a toaster: the card
+      Two things decide whether this reads as a wallet rather than a bag or a toaster: the note
       sits off to one side instead of rising out of the middle with matching gaps either side,
       and the right-hand clasp pocket gives the silhouette people already associate with a wallet.
 
-      Everything stays within roughly 32 units of the centre (54,54) — adaptive icons are masked
-      to whatever shape the launcher likes, and only that inner circle is certain to survive.
+      Everything stays within about 32 units of the centre (54,54) — adaptive icons are masked to
+      whatever shape the launcher likes, and only that inner circle is certain to survive.
     -->
 
-    <!-- The card, tucked in at the right and standing above the wallet's edge. -->
+    <!-- The note, tucked in at the right and standing above the wallet's edge. -->
     <path
-        android:fillColor="#FFC107"
+        android:fillColor="#E8C56A"
         android:pathData="M55,31 L71,31 A3,3 0 0 1 74,34 L74,53 L52,53 L52,34 A3,3 0 0 1 55,31 Z" />
     <!-- A stripe across it, so it reads as a note rather than a blank tab. -->
     <path
-        android:fillColor="#1B5E20"
-        android:fillAlpha="0.30"
+        android:fillColor="#241A12"
+        android:fillAlpha="0.28"
         android:pathData="M56,36 L70,36 L70,39 L56,39 Z" />
 
-    <!-- Wallet body. -->
+    <!-- Wallet body, in leather brown. -->
     <path
-        android:fillColor="#FFFFFF"
+        android:fillColor="#8B5A2B"
         android:pathData="M35,43 L73,43 A8,8 0 0 1 81,51 L81,69 A8,8 0 0 1 73,77 L35,77 A8,8 0 0 1 27,69 L27,51 A8,8 0 0 1 35,43 Z" />
+    <!-- A lighter face on the upper half, so the leather has some form to it. -->
+    <path
+        android:fillColor="#A56B33"
+        android:pathData="M35,43 L73,43 A8,8 0 0 1 81,51 L81,58 L27,58 L27,51 A8,8 0 0 1 35,43 Z" />
 
     <!-- Clasp pocket, cut out of the body in the background colour. -->
     <path
-        android:fillColor="#1B5E20"
+        android:fillColor="#241A12"
         android:pathData="M62,52 L81,52 L81,66 L62,66 A7,7 0 0 1 62,52 Z" />
 
-    <!-- The snap itself. -->
+    <!-- The snap itself, in brass. -->
     <path
-        android:fillColor="#FFC107"
+        android:fillColor="#E8C56A"
         android:pathData="M70,59 m-4,0 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0" />
 </vector>

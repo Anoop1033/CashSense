@@ -26,6 +26,16 @@
             </intent-filter>
         </activity>
 
+        <!-- Fires after the app is updated, which is the only chance to rebind the notification
+             listener before the user happens to open the app again. -->
+        <receiver
+            android:name=".service.PackageReplacedReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
         <service
             android:name=".service.UpiNotificationListenerService"
             android:exported="false"

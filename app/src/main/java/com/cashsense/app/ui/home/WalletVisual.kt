@@ -362,10 +362,10 @@ private fun NoteVisual(
             )
         }
 
-        // Front note. Content is a real Column (top row / weighted middle / bottom row) rather
-        // than free-floating Box alignment, so the big numeral can never collide with the
-        // corner text above it — each row only ever occupies the space it's given.
-        Column(
+        // Front note. The portrait is laid over the whole note rather than placed inside the
+        // middle row: confined to that row its height was capped by the flattest denomination,
+        // so it could be either large or the same size on every note, but not both.
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(aspect)
@@ -384,6 +384,29 @@ private fun NoteVisual(
                     drawFrameOrnaments(textColor)
                 }
                 .border(0.6.dp, Color.White.copy(alpha = 0.35f), shape)
+        ) {
+            // Sized from the note's width, which every denomination shares, so the portrait comes
+            // out identical everywhere instead of tracking each note's differing height.
+            BoxWithConstraints(modifier = Modifier.matchParentSize()) {
+                PortraitSilhouette(
+                    color = textColor,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        // The bottom inset lifts it clear of the serial number and seal, which
+                        // sit in the same corner; without it the shoulders cover the serial.
+                        .padding(end = 13.dp, bottom = 11.dp)
+                        .height((maxWidth.value * 0.26f).dp)
+                        .aspectRatio(0.78f)
+                        .graphicsLayer {
+                            rotationY = -22f
+                            cameraDistance = 24f * density
+                        }
+                )
+            }
+
+        Column(
+            modifier = Modifier
+                .matchParentSize()
                 // Extra start inset clears the language panel drawn down the left edge.
                 .padding(start = 14.dp, end = 6.dp, top = 4.dp, bottom = 4.dp)
         ) {
@@ -421,7 +444,6 @@ private fun NoteVisual(
                 // fontScale is pinned to 1 in this subtree, so sp and dp line up here.
                 val numeralSize = minOf(across * 0.115f, down * 0.52f).coerceIn(10f, 19f).sp
                 val devanagariSize = minOf(across * 0.052f, down * 0.24f).coerceIn(5f, 9f).sp
-                val portraitHeight = minOf(across * 0.19f, down * 0.95f).dp
 
                 Canvas(modifier = Modifier.matchParentSize()) {
                     drawCircle(
@@ -432,17 +454,6 @@ private fun NoteVisual(
                         center = Offset(size.width * 0.24f, size.height * 0.5f)
                     )
                 }
-                PortraitSilhouette(
-                    color = textColor,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .height(portraitHeight)
-                        .aspectRatio(0.78f)
-                        .graphicsLayer {
-                            rotationY = -22f
-                            cameraDistance = 24f * density
-                        }
-                )
                 // Side by side rather than stacked: a note is far wider than it is tall, so a
                 // second line here overflowed the row and was clipped away to a sliver.
                 Row(
@@ -503,6 +514,7 @@ private fun NoteVisual(
                     SealEmblem(color = textColor, modifier = Modifier.size(11.dp))
                 }
             }
+        }
         }
     }
 }
