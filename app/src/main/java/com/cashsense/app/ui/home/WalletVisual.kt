@@ -343,10 +343,12 @@ fun DenominationCard(
                             .matchParentSize()
                             .graphicsLayer {
                                 translationY = towards * travel * size.height * 7f
-                                // Drifts aside as it rises, so the path is a curve rather than a
-                                // straight slide — closer to how a note actually moves through air.
-                                translationX = towards * travel * size.width * 0.22f
-                                rotationZ = towards * travel * -13f
+                                // Straight up its own column, with no sideways drift. Drifting
+                                // aside looked better in isolation but carried the note across
+                                // the card beside it, which reads as that neighbour swelling
+                                // rather than as this note leaving.
+                                translationX = 0f
+                                rotationZ = towards * travel * -6f
                                 // Turning about its long edge is what makes it read as a sheet of
                                 // paper catching the light rather than a rectangle being dragged.
                                 rotationX = travel * 26f
