@@ -102,6 +102,46 @@ class TransactionTextParserTest {
         assertEquals(fromSms!!.referenceId, fromEmail!!.referenceId)
     }
 
+    // The UPI app's own notification, which lands immediately while the bank's SMS and email
+    // trail behind it.
+
+    @Test
+    fun `reads an incoming payment announced by the upi app`() {
+        val result = TransactionTextParser.parse(
+            packageName = "com.phonepe.app",
+            title = "Ansh Soin paid you ₹1.00",
+            text = "Payment from PhonePe"
+        )
+        assertNotNull(result)
+        assertEquals(100L, result!!.amountPaise)
+        assertEquals(TransactionDirection.CREDIT, result.direction)
+        // These carry no bank reference; duplicate handling falls back to amount and timing.
+        assertNull(result.referenceId)
+    }
+
+    @Test
+    fun `reads a google pay incoming payment`() {
+        val result = TransactionTextParser.parse(
+            packageName = "com.google.android.apps.nbu.paisa.user",
+            title = "MAYANK SHARMA paid you ₹236.00",
+            text = "Sent using Paytm UPI"
+        )
+        assertNotNull(result)
+        assertEquals(23600L, result!!.amountPaise)
+        assertEquals(TransactionDirection.CREDIT, result.direction)
+    }
+
+    @Test
+    fun `paying someone is still a debit, not confused with being paid`() {
+        val result = TransactionTextParser.parse(
+            packageName = "com.google.android.apps.nbu.paisa.user",
+            title = "Payment successful",
+            text = "You paid ₹236.00 to Ramesh Kirana Store"
+        )
+        assertNotNull(result)
+        assertEquals(TransactionDirection.DEBIT, result!!.direction)
+    }
+
     private fun isDetected(text: String): Boolean =
         TransactionTextParser.parse("com.some.bank", null, text) != null
 

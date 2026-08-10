@@ -18,10 +18,12 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -401,11 +403,26 @@ private fun NoteVisual(
                 IdentificationMark(value = value, color = textColor, modifier = Modifier.size(9.dp))
             }
 
-            Box(
+            // Sized from the space actually available rather than in fixed units. Notes share a
+            // width but not a height — a 500 is the flattest and a 10 the tallest — so fixed
+            // sizes made the numeral overflow the shortest note and the portrait look bigger on
+            // some denominations than others.
+            BoxWithConstraints(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
             ) {
+                // Measured against the note's width, not its height. Every note in the grid is
+                // the same width but not the same height, so sizing off height made the portrait
+                // and numeral visibly larger on the taller denominations. Height only comes in as
+                // a ceiling, so nothing overflows the flattest note.
+                val across = maxWidth.value
+                val down = maxHeight.value
+                // fontScale is pinned to 1 in this subtree, so sp and dp line up here.
+                val numeralSize = minOf(across * 0.115f, down * 0.52f).coerceIn(10f, 19f).sp
+                val devanagariSize = minOf(across * 0.052f, down * 0.24f).coerceIn(5f, 9f).sp
+                val portraitHeight = minOf(across * 0.19f, down * 0.95f).dp
+
                 Canvas(modifier = Modifier.matchParentSize()) {
                     drawCircle(
                         brush = Brush.radialGradient(
@@ -419,15 +436,15 @@ private fun NoteVisual(
                     color = textColor,
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
-                        .size(width = 26.dp, height = 32.dp)
+                        .height(portraitHeight)
+                        .aspectRatio(0.78f)
                         .graphicsLayer {
                             rotationY = -22f
                             cameraDistance = 24f * density
                         }
                 )
-                // Side by side rather than stacked: a note is far wider than it is tall, and the
-                // higher denominations are proportionally the shortest, so a second line here
-                // overflowed the row and was clipped away to a sliver.
+                // Side by side rather than stacked: a note is far wider than it is tall, so a
+                // second line here overflowed the row and was clipped away to a sliver.
                 Row(
                     modifier = Modifier.align(Alignment.CenterStart),
                     verticalAlignment = Alignment.Bottom
@@ -437,18 +454,19 @@ private fun NoteVisual(
                         color = textColor,
                         fontWeight = FontWeight.ExtraBold,
                         fontFamily = FontFamily.Serif,
-                        fontSize = 18.sp
+                        fontSize = numeralSize,
+                        maxLines = 1
                     )
                     Spacer(modifier = Modifier.size(3.dp))
                     Text(
                         text = devanagariNumeral(value),
                         color = textColor.copy(alpha = 0.88f),
                         fontWeight = FontWeight.Bold,
-                        fontSize = 8.sp,
+                        fontSize = devanagariSize,
+                        maxLines = 1,
                         modifier = Modifier.padding(bottom = 2.dp)
                     )
                 }
-
             }
 
             Row(

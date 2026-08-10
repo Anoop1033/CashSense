@@ -50,7 +50,12 @@ object TransactionTextParser {
     )
 
     private val creditKeywords = listOf(
-        "credited", "received from", "you received", "refunded", "deposited", "cashback of"
+        "credited", "received from", "you received", "refunded", "deposited", "cashback of",
+        // How UPI apps word an incoming payment: "Ansh Soin paid you ₹1.00". Worth reading even
+        // though the bank will announce the same payment, because the app's notification arrives
+        // at once while the bank's SMS and email can trail it by minutes — without this the
+        // wallet looks broken for as long as that takes. Duplicate handling collapses the pair.
+        "paid you", "sent you", "money received"
     )
 
     /**
