@@ -353,13 +353,17 @@ fun DenominationCard(
         }
 
         pulseIsCredit = change > 0
-        // An arriving note has not landed, so the stack keeps its old count until it does. A
-        // departing one has already left, so the stack drops to the new count at once.
-        restingCount = if (change > 0) from else currentCount
 
         // Denominations move one after another rather than all at once, so paying ₹270 reads
         // as counting notes out of a wallet instead of the whole screen twitching.
         if (staggerDelayMillis > 0) delay(staggerDelayMillis.toLong())
+
+        // An arriving note has not landed, so the stack keeps its old count until it does. A
+        // departing one has already left, so the stack drops to the new count at once — but not
+        // until right here, in the same instant the ghost note is about to appear. Dropping it
+        // earlier, before the stagger wait above, hid the note during that wait with no ghost yet
+        // on screen to replace it — a card waiting its turn simply blinked out of existence.
+        restingCount = if (change > 0) from else currentCount
         flightSign = if (change > 0) 1 else -1
         pulsing = true
         launch {
