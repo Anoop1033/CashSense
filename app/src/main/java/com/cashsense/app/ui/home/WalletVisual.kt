@@ -68,6 +68,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cashsense.app.domain.DenominationStack
 import com.cashsense.app.domain.DenominationType
+import com.cashsense.app.domain.IndianDenominations
 import com.cashsense.app.ui.theme.CreditGreen
 import com.cashsense.app.ui.theme.DebitRed
 import com.cashsense.app.ui.theme.denominationColor
@@ -104,17 +105,22 @@ fun WalletGrid(
     // buy us a crash from nesting a scrollable grid inside the outer LazyColumn.
     // Two columns (not three) so each note is big enough to hold its detail without crowding.
     //
-    // Denominations the user last saw are kept in the grid even once they are spent, so a note
-    // leaving the wallet can be shown leaving rather than simply being absent on the next frame.
-    // They drop out once their animation has run.
+    // Every denomination holds a permanent slot, whether or not the wallet contains any of it.
+    //
+    // Packing only what you hold looks tidier, but it means the grid re-flows whenever a
+    // denomination appears or disappears, and cards then shift between rows. Compose keeps a
+    // card's state only while it stays under the same parent, so a card that changes row is
+    // destroyed and rebuilt — and a rebuilt card, seeing a count it has no memory of drawing,
+    // plays an arrival it never earned. That is why spending a 50 made the 500 swell: the 500
+    // never changed, it was simply rebuilt somewhere else. Fixed slots mean no card ever moves,
+    // so none can be rebuilt by something happening elsewhere in the wallet.
     val seenCounts = remember(seenStacks) {
         seenStacks.associate { it.denomination.value to it.count }
     }
-    val rows = remember(stacks, seenStacks) {
-        val currentByValue = stacks.associateBy { it.denomination.value }
-        val departed = seenStacks.filter { it.denomination.value !in currentByValue }
-        (stacks + departed).sortedByDescending { it.denomination.value }
+    val countsByValue = remember(stacks) {
+        stacks.associate { it.denomination.value to it.count }
     }
+    val rows = remember { IndianDenominations.ALL.map { DenominationStack(it, 0) } }
 
     // Position in the wallet drives how long each note waits before it moves, so a payment that
     // touches several denominations plays out as a sequence rather than all at once.
@@ -135,9 +141,7 @@ fun WalletGrid(
                     key(value) {
                         DenominationCard(
                             stack = stack,
-                            // Absent from the wallet now means every note of it has gone; the
-                            // card stays only long enough to animate that.
-                            currentCount = if (stacks.any { it.denomination.value == value }) stack.count else 0,
+                            currentCount = countsByValue[value] ?: 0,
                             // A denomination absent from the wallet the user last saw had none of
                             // it, not "however many there are now" — otherwise a note appearing
                             // for the first time has nothing to animate from and blinks into place.
@@ -309,11 +313,15 @@ fun DenominationCard(
         restingCount = currentCount
     }
 
-    // A denomination spent down to nothing is drawn for as long as it still has a note to send
-    // away — either one in the air, or a change that has not been played yet because the wallet
-    // was not being watched. Only once there is nothing owed does the card go.
+    // A denomination the wallet holds none of takes no room at all — its slot exists so the cards
+    // around it never move, not so it can leave a hole. It still draws while it has a note in the
+    // air, or one owed because the wallet was not being watched.
     val owesAnimation = currentCount != lastDrawnCount
-    if (currentCount <= 0 && flightSign == 0 && !owesAnimation) return
+    val nothingToShow = currentCount <= 0 && restingCount <= 0 && flightSign == 0 && !owesAnimation
+    if (nothingToShow) {
+        Spacer(modifier = modifier)
+        return
+    }
 
     // No scale pulse on the stack itself. Swelling and shrinking the whole card read as a glitch
     // rather than a transaction, and it drew the eye away from the note actually travelling.
