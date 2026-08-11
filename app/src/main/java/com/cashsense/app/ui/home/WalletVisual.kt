@@ -360,7 +360,13 @@ fun DenominationCard(
                                 cameraDistance = 34f * density
                                 // Grows on the way, so the note reads as lifted off the stack and
                                 // held up rather than simply sliding across the card.
-                                val lift = 1f + travel * 0.38f
+                                //
+                                // Bounded, though. A note scales about its own centre, so growth
+                                // of S spills (S-1)/2 of its width past each edge; the gap between
+                                // columns is only 18dp. Past about 1.18 the note crosses into the
+                                // card beside it, which reads as that neighbour swelling — the
+                                // reason spending a 200 looked like the 500 growing.
+                                val lift = 1f + travel * 0.15f
                                 scaleX = lift
                                 scaleY = lift
                                 // Cubed, so it holds its presence for most of the trip and goes
@@ -623,19 +629,105 @@ private fun CoinVisual(
                 .size(coinSize)
                 .shadow(elevation = 3.dp, shape = CircleShape)
                 .border(1.4.dp, ringColor, CircleShape)
-                .padding(2.dp)
                 .clip(CircleShape)
                 .background(
-                    Brush.radialGradient(listOf(lighten(baseColor, 0.35f), baseColor, darken(baseColor, 0.2f)))
+                    // Struck metal catches light from one side, so the highlight sits off-centre
+                    // rather than glowing evenly from the middle.
+                    Brush.radialGradient(
+                        colors = listOf(lighten(baseColor, 0.42f), baseColor, darken(baseColor, 0.28f)),
+                        center = Offset(0.34f, 0.30f) * 100f,
+                        radius = 150f
+                    )
                 )
-                .border(1.dp, Color.White.copy(alpha = 0.5f), CircleShape)
-                .padding(4.dp)
-                .border(0.6.dp, darken(baseColor, 0.3f), CircleShape),
+                .drawBehind { drawCoinFace(baseColor, textColor) },
             contentAlignment = Alignment.Center
         ) {
-            Text("₹$value", color = textColor, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(
+                    text = "₹",
+                    color = textColor.copy(alpha = 0.85f),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 7.sp,
+                    lineHeight = 8.sp
+                )
+                Text(
+                    text = "$value",
+                    color = textColor,
+                    fontWeight = FontWeight.ExtraBold,
+                    fontFamily = FontFamily.Serif,
+                    fontSize = 20.sp,
+                    lineHeight = 21.sp
+                )
+                Text(
+                    text = "भारत",
+                    color = textColor.copy(alpha = 0.72f),
+                    fontWeight = FontWeight.Medium,
+                    fontSize = 5.sp,
+                    lineHeight = 6.sp
+                )
+            }
         }
     }
+}
+
+/**
+ * The struck detail of a coin: a milled edge, the raised rim inside it, and a faint sheen.
+ *
+ * The milling is what separates a coin from a plain disc at a glance — it is the one feature
+ * every real coin has and no button does.
+ */
+private fun DrawScope.drawCoinFace(base: Color, ink: Color) {
+    val radius = size.minDimension / 2f
+    val centre = Offset(size.width / 2f, size.height / 2f)
+
+    // Milled edge: short cuts around the circumference.
+    val teeth = 44
+    val outer = radius * 0.99f
+    val inner = radius * 0.90f
+    for (i in 0 until teeth) {
+        val angle = (2 * PI * i / teeth).toFloat()
+        drawLine(
+            color = darken(base, 0.35f).copy(alpha = 0.55f),
+            start = Offset(centre.x + inner * cos(angle), centre.y + inner * sin(angle)),
+            end = Offset(centre.x + outer * cos(angle), centre.y + outer * sin(angle)),
+            strokeWidth = radius * 0.055f
+        )
+    }
+
+    // Raised rim, bright on the lit side and shaded opposite so the disc looks domed.
+    drawCircle(
+        color = Color.White.copy(alpha = 0.45f),
+        radius = radius * 0.87f,
+        center = centre,
+        style = Stroke(width = radius * 0.06f)
+    )
+    drawCircle(
+        color = darken(base, 0.3f).copy(alpha = 0.5f),
+        radius = radius * 0.80f,
+        center = centre,
+        style = Stroke(width = radius * 0.035f)
+    )
+
+    // A soft sheen across the upper left, matching where the fill is lit from.
+    drawCircle(
+        brush = Brush.linearGradient(
+            colors = listOf(Color.White.copy(alpha = 0.22f), Color.Transparent),
+            start = Offset(0f, 0f),
+            end = Offset(size.width * 0.75f, size.height * 0.75f)
+        ),
+        radius = radius * 0.78f,
+        center = centre
+    )
+    // And the faintest shadow along the lower right, so it does not read as flat.
+    drawCircle(
+        brush = Brush.linearGradient(
+            colors = listOf(Color.Transparent, darken(base, 0.4f).copy(alpha = 0.18f)),
+            start = Offset(size.width * 0.35f, size.height * 0.35f),
+            end = Offset(size.width, size.height)
+        ),
+        radius = radius * 0.78f,
+        center = centre
+    )
 }
 
 /**
