@@ -49,6 +49,21 @@ object TransactionTextParser {
         "debited", "paid to", "you paid", "sent to", "spent", "withdrawn", "purchase of"
     )
 
+    /**
+     * "paid ... to" / "sent ... to", with the amount allowed to sit between the verb and the
+     * preposition — "Paid ₹70 to Ramesh", "You sent ₹70.00 to Ramesh". A plain "paid to" /
+     * "sent to" substring match misses these outright, because the amount breaks the two words
+     * apart; a real ₹70 spent through GPay went unrecorded for exactly this reason.
+     *
+     * The gap between the verb and "to" is restricted to a currency amount specifically, so this
+     * does not fire on "paid you ... to our store" or similar, where a real word — not a number —
+     * sits in between.
+     */
+    private val paidOrSentToRegex = Regex(
+        """\b(?:paid|sent)\b\s*(?:₹|Rs\.?|INR)?\s*[0-9][0-9,]*(?:\.[0-9]{1,2})?\s*\bto\b""",
+        RegexOption.IGNORE_CASE
+    )
+
     private val creditKeywords = listOf(
         "credited", "received from", "you received", "refunded", "deposited", "cashback of",
         // How UPI apps word an incoming payment: "Ansh Soin paid you ₹1.00". Worth reading even
@@ -121,6 +136,7 @@ object TransactionTextParser {
         val direction = when {
             debitKeywords.any { lower.contains(it) } -> TransactionDirection.DEBIT
             creditKeywords.any { lower.contains(it) } -> TransactionDirection.CREDIT
+            paidOrSentToRegex.containsMatchIn(combined) -> TransactionDirection.DEBIT
             else -> return null
         }
 

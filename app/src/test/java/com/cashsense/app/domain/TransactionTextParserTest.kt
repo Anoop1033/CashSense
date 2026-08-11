@@ -142,6 +142,47 @@ class TransactionTextParserTest {
         assertEquals(TransactionDirection.DEBIT, result!!.direction)
     }
 
+    // A real payment went unrecorded because the phrasing GPay actually uses puts the amount
+    // between the verb and "to" — "Paid ₹70 to Ramesh" — which "paid to" as a literal substring
+    // does not match. "paid to" only matches when nothing sits between the two words.
+
+    @Test
+    fun `reads a debit where the amount sits between paid and to`() {
+        val result = TransactionTextParser.parse(
+            packageName = "com.google.android.apps.nbu.paisa.user",
+            title = "Paid ₹70.00 to Ramesh",
+            text = "Using Bank Account"
+        )
+        assertNotNull(result)
+        assertEquals(7000L, result!!.amountPaise)
+        assertEquals(TransactionDirection.DEBIT, result.direction)
+    }
+
+    @Test
+    fun `reads a debit where the amount sits between sent and to`() {
+        val result = TransactionTextParser.parse(
+            packageName = "com.google.android.apps.nbu.paisa.user",
+            title = "Payment successful",
+            text = "You sent ₹70 to Ramesh"
+        )
+        assertNotNull(result)
+        assertEquals(7000L, result!!.amountPaise)
+        assertEquals(TransactionDirection.DEBIT, result.direction)
+    }
+
+    @Test
+    fun `a payee named to does not turn a credit into a debit`() {
+        // "paid" is immediately followed by "you", a word, not a number — the amount-gap regex
+        // must not treat this as "paid ... to" just because the message contains "to" later on.
+        val result = TransactionTextParser.parse(
+            packageName = "com.google.android.apps.nbu.paisa.user",
+            title = "MAYANK SHARMA paid you ₹236.00",
+            text = "Sent using Paytm UPI, thanks for shopping, come again to our store"
+        )
+        assertNotNull(result)
+        assertEquals(TransactionDirection.CREDIT, result!!.direction)
+    }
+
     private fun isDetected(text: String): Boolean =
         TransactionTextParser.parse("com.some.bank", null, text) != null
 

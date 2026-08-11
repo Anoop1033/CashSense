@@ -60,15 +60,18 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.Placeable
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.cashsense.app.domain.DenominationStack
 import com.cashsense.app.domain.DenominationType
-import com.cashsense.app.domain.IndianDenominations
 import com.cashsense.app.ui.theme.CreditGreen
 import com.cashsense.app.ui.theme.DebitRed
 import com.cashsense.app.ui.theme.denominationColor
@@ -101,61 +104,111 @@ fun WalletGrid(
         return
     }
 
-    // A plain (non-lazy) grid: there are at most 9 denominations, so laziness would only
-    // buy us a crash from nesting a scrollable grid inside the outer LazyColumn.
-    // Two columns (not three) so each note is big enough to hold its detail without crowding.
+    // Packed tightly — only denominations actually held get a slot — but every card lives
+    // directly under this one flat layout rather than inside a separate Row per pair.
     //
-    // Every denomination holds a permanent slot, whether or not the wallet contains any of it.
+    // The earlier bug (spending a 50 made the 500 swell) came from chunking into row-pairs:
+    // when the set of denominations shown changed, cards shifted between different Row
+    // instances, and Compose only preserves a card's remembered state — its animation included
+    // — while it stays under the same parent. A card that changed parent was destroyed and
+    // rebuilt, and the rebuilt card, seeing a count it had no memory of drawing, played an
+    // arrival it never earned. With one flat parent, a denomination appearing or disappearing
+    // only reorders siblings; key(value) preserves each card's state through that on its own,
+    // with no parent change for anything to go wrong on.
     //
-    // Packing only what you hold looks tidier, but it means the grid re-flows whenever a
-    // denomination appears or disappears, and cards then shift between rows. Compose keeps a
-    // card's state only while it stays under the same parent, so a card that changes row is
-    // destroyed and rebuilt — and a rebuilt card, seeing a count it has no memory of drawing,
-    // plays an arrival it never earned. That is why spending a 50 made the 500 swell: the 500
-    // never changed, it was simply rebuilt somewhere else. Fixed slots mean no card ever moves,
-    // so none can be rebuilt by something happening elsewhere in the wallet.
+    // A departing card is not dropped the instant its count reaches zero, though — it stays
+    // until it reports (via onSettledEmpty) that its own note has actually finished leaving, so
+    // the slot never closes out from under a still-travelling note.
     val seenCounts = remember(seenStacks) {
         seenStacks.associate { it.denomination.value to it.count }
     }
     val countsByValue = remember(stacks) {
         stacks.associate { it.denomination.value to it.count }
     }
-    val rows = remember { IndianDenominations.ALL.map { DenominationStack(it, 0) } }
-
-    // Position in the wallet drives how long each note waits before it moves, so a payment that
-    // touches several denominations plays out as a sequence rather than all at once.
-    val staggerByValue = remember(rows) {
-        rows.mapIndexed { index, stack ->
-            stack.denomination.value to minOf(index, 5) * 110
-        }.toMap()
+    val heldValues = remember(stacks) {
+        stacks.filter { it.count > 0 }.map { it.denomination.value }.toSet()
     }
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(24.dp)) {
-        rows.chunked(2).forEach { rowStacks ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(18.dp)
-            ) {
-                rowStacks.forEach { stack ->
-                    val value = stack.denomination.value
-                    key(value) {
-                        DenominationCard(
-                            stack = stack,
-                            currentCount = countsByValue[value] ?: 0,
-                            // A denomination absent from the wallet the user last saw had none of
-                            // it, not "however many there are now" — otherwise a note appearing
-                            // for the first time has nothing to animate from and blinks into place.
-                            seenCount = seenCounts[value] ?: 0,
-                            animateChanges = animateChanges,
-                            modifier = Modifier.weight(1f),
-                            staggerDelayMillis = staggerByValue[value] ?: 0
-                        )
-                    }
-                }
-                repeat(2 - rowStacks.size) {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
+    var visibleValues by remember {
+        mutableStateOf(heldValues + seenCounts.filterValues { it > 0 }.keys)
+    }
+    // A newly-held denomination joins the packed layout at once; the arrival then plays inside
+    // the card exactly as any other count change does.
+    LaunchedEffect(heldValues) {
+        visibleValues = visibleValues + heldValues
+    }
+
+    val orderedVisible = remember(visibleValues) { visibleValues.sortedDescending() }
+    val stacksByValue = remember(stacks, seenStacks) {
+        (stacks + seenStacks).associateBy { it.denomination.value }
+    }
+
+    // Position drives how long each note waits before it moves, so a payment touching several
+    // denominations plays out as a sequence rather than all at once.
+    val staggerByValue = remember(orderedVisible) {
+        orderedVisible.mapIndexed { index, value -> value to minOf(index, 5) * 110 }.toMap()
+    }
+
+    TwoColumnFlowLayout(
+        modifier = modifier,
+        horizontalSpacing = 18.dp,
+        verticalSpacing = 24.dp
+    ) {
+        orderedVisible.forEach { value ->
+            key(value) {
+                DenominationCard(
+                    stack = stacksByValue.getValue(value),
+                    currentCount = countsByValue[value] ?: 0,
+                    // A denomination absent from the wallet the user last saw had none of it,
+                    // not "however many there are now" — otherwise a note appearing for the
+                    // first time has nothing to animate from and blinks into place.
+                    seenCount = seenCounts[value] ?: 0,
+                    animateChanges = animateChanges,
+                    staggerDelayMillis = staggerByValue[value] ?: 0,
+                    onSettledEmpty = { visibleValues = visibleValues - value }
+                )
             }
+        }
+    }
+}
+
+/**
+ * A flat, non-lazy two-column wrap: every child is a direct child of this one [Layout], not of
+ * a per-row [Row], so [key]-based reordering never reparents a child — which is what makes it
+ * safe for [WalletGrid] to add and remove denominations without disturbing the ones that stay.
+ */
+@Composable
+private fun TwoColumnFlowLayout(
+    modifier: Modifier = Modifier,
+    horizontalSpacing: Dp,
+    verticalSpacing: Dp,
+    content: @Composable () -> Unit
+) {
+    Layout(content = content, modifier = modifier) { measurables, constraints ->
+        val hSpacing = horizontalSpacing.roundToPx()
+        val vSpacing = verticalSpacing.roundToPx()
+        val columnWidth = ((constraints.maxWidth - hSpacing) / 2).coerceAtLeast(0)
+        val childConstraints = Constraints.fixedWidth(columnWidth)
+        val placeables = measurables.map { it.measure(childConstraints) }
+
+        data class Placement(val x: Int, val y: Int, val placeable: Placeable)
+
+        val placements = mutableListOf<Placement>()
+        var y = 0
+        var i = 0
+        while (i < placeables.size) {
+            val left = placeables[i]
+            val right = placeables.getOrNull(i + 1)
+            val rowHeight = maxOf(left.height, right?.height ?: 0)
+            placements += Placement(0, y, left)
+            if (right != null) placements += Placement(columnWidth + hSpacing, y, right)
+            y += rowHeight + vSpacing
+            i += 2
+        }
+        val totalHeight = if (placements.isEmpty()) 0 else y - vSpacing
+
+        layout(constraints.maxWidth, totalHeight) {
+            placements.forEach { it.placeable.placeRelative(it.x, it.y) }
         }
     }
 }
@@ -243,7 +296,14 @@ fun DenominationCard(
     currentCount: Int = stack.count,
     seenCount: Int = stack.count,
     animateChanges: Boolean = true,
-    staggerDelayMillis: Int = 0
+    staggerDelayMillis: Int = 0,
+    /**
+     * Called once the card has nothing left to show: no notes held, none in flight, none still
+     * owed. [WalletGrid] uses this to close the slot at the moment it is genuinely safe to —
+     * not the instant the count reaches zero, which would close it out from under a note that
+     * is still on its way out.
+     */
+    onSettledEmpty: () -> Unit = {}
 ) {
     val isCoin = stack.denomination.type == DenominationType.COIN
     val value = stack.denomination.value
@@ -313,15 +373,14 @@ fun DenominationCard(
         restingCount = currentCount
     }
 
-    // A denomination the wallet holds none of takes no room at all — its slot exists so the cards
-    // around it never move, not so it can leave a hole. It still draws while it has a note in the
-    // air, or one owed because the wallet was not being watched.
+    // Tells the grid the slot can close: nothing held, nothing in the air, nothing still owed
+    // from a change that happened while the wallet was not being watched.
     val owesAnimation = currentCount != lastDrawnCount
     val nothingToShow = currentCount <= 0 && restingCount <= 0 && flightSign == 0 && !owesAnimation
-    if (nothingToShow) {
-        Spacer(modifier = modifier)
-        return
+    LaunchedEffect(nothingToShow) {
+        if (nothingToShow) onSettledEmpty()
     }
+    if (nothingToShow) return
 
     // No scale pulse on the stack itself. Swelling and shrinking the whole card read as a glitch
     // rather than a transaction, and it drew the eye away from the note actually travelling.
