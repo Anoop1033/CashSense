@@ -32,6 +32,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -53,6 +54,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.Shadow
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -156,6 +158,15 @@ fun WalletGrid(
 
 private fun darken(color: Color, amount: Float): Color = lerp(color, Color.Black, amount)
 private fun lighten(color: Color, amount: Float): Color = lerp(color, Color.White, amount)
+
+/**
+ * A shadow colour for type sitting on a note. Dark notes take a light shadow and light notes a
+ * dark one — a single fixed colour disappears against half the denominations.
+ */
+private fun shadowInkFor(noteColor: Color): Color {
+    val luminance = 0.299f * noteColor.red + 0.587f * noteColor.green + 0.114f * noteColor.blue
+    return if (luminance < 0.5f) Color.White else Color.Black
+}
 
 /**
  * The note/coin art is a fixed-layout illustration, not reading text — if its type scaled with
@@ -522,8 +533,10 @@ private fun NoteVisual(
                 val across = maxWidth.value
                 val down = maxHeight.value
                 // fontScale is pinned to 1 in this subtree, so sp and dp line up here.
-                val numeralSize = minOf(across * 0.115f, down * 0.52f).coerceIn(10f, 19f).sp
-                val devanagariSize = minOf(across * 0.052f, down * 0.24f).coerceIn(5f, 9f).sp
+                // The denomination is the one thing that has to be readable at a glance, so it
+                // takes as much of the note as the flattest one can carry.
+                val numeralSize = minOf(across * 0.165f, down * 0.66f).coerceIn(12f, 27f).sp
+                val devanagariSize = minOf(across * 0.058f, down * 0.24f).coerceIn(5f, 10f).sp
 
                 Canvas(modifier = Modifier.matchParentSize()) {
                     drawCircle(
@@ -546,7 +559,17 @@ private fun NoteVisual(
                         fontWeight = FontWeight.ExtraBold,
                         fontFamily = FontFamily.Serif,
                         fontSize = numeralSize,
-                        maxLines = 1
+                        maxLines = 1,
+                        // Lifted off the guilloche behind it. Against a busy patterned ground a
+                        // flat numeral has to be read rather than simply seen; the shadow gives
+                        // the figure an edge so the eye picks it out immediately.
+                        style = LocalTextStyle.current.copy(
+                            shadow = Shadow(
+                                color = shadowInkFor(baseColor).copy(alpha = 0.55f),
+                                offset = Offset(0f, 1.5f),
+                                blurRadius = 3f
+                            )
+                        )
                     )
                     Spacer(modifier = Modifier.size(3.dp))
                     Text(
