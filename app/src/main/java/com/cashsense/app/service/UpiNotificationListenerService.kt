@@ -14,11 +14,15 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /**
- * Listens to all posted notifications system-wide (required by the Android API —
- * there is no way to subscribe to a subset of packages) but only ever acts on
- * ones that survive [TransactionTextParser]'s strict amount+keyword check.
- * Every match becomes a PENDING transaction that the user must confirm in the
- * app before it affects the wallet — nothing is applied silently.
+ * Listens to all posted notifications system-wide — the Android API offers no way to subscribe to
+ * a subset of packages — but discards everything that is not from a payment app, a bank, or a
+ * carrier of bank alerts, and then everything that does not survive [TransactionTextParser]'s
+ * amount-beside-verb check.
+ *
+ * What a surviving match does depends on how sure it is. A reading that corroborates itself, by
+ * quoting the bank's reference or naming the account, goes straight into the balance when the user
+ * has asked for that; anything less waits on the Wallet screen to be confirmed. Nothing read here
+ * is logged or transmitted.
  */
 class UpiNotificationListenerService : NotificationListenerService() {
 
@@ -49,33 +53,15 @@ class UpiNotificationListenerService : NotificationListenerService() {
         val text = extras.getCharSequence(Notification.EXTRA_TEXT)?.toString()
         val body = bigText ?: text
 
-        val parsed = TransactionTextParser.parse(packageName, title, body)
-
-        // Temporary, while detection is being chased down on a real phone: without a record of
-        // what actually reached the listener there is no way to tell a notification that never
-        // arrived from one the parser turned down.
-        if (parsed != null || looksMonetary(title, body)) {
-            android.util.Log.d(
-                "CashSenseDetect",
-                "from=$packageName parsed=${parsed != null} " +
-                    "amount=${parsed?.amountPaise} dir=${parsed?.direction} ref=${parsed?.referenceId} " +
-                    "text=${(title.orEmpty() + " | " + body.orEmpty()).take(180)}"
-            )
-        }
-        if (parsed == null) return
+        // Notification text is read here and either turned into a transaction or dropped on the
+        // spot. It is never logged and never leaves the device: this handler is the only place it
+        // is looked at, and only an amount, a direction and the bank's reference survive it.
+        val parsed = TransactionTextParser.parse(packageName, title, body) ?: return
 
         val app = application as CashSenseApp
         scope.launch {
             app.repository.addPendingFromNotification(parsed)
         }
-    }
-
-    /** Anything mentioning money at all, so a notification the parser rejects still gets logged. */
-    private fun looksMonetary(title: String?, body: String?): Boolean {
-        val text = (title.orEmpty() + " " + body.orEmpty()).lowercase()
-        return text.contains("rs.") || text.contains("rs ") || text.contains("inr") ||
-            text.contains("₹") || text.contains("credit") || text.contains("debit") ||
-            text.contains("paid")
     }
 
     companion object {

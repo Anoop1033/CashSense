@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CashSense — Privacy Policy</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    max-width: 46rem; margin: 0 auto; padding: 2.5rem 1.25rem 5rem;
+    font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    color: #1a1a1a; background: #fff;
+  }
+  @media (prefers-color-scheme: dark) { body { color: #e8e6e3; background: #16130f; } }
+  h1 { font-size: 1.9rem; margin-bottom: .25rem; }
+  h2 { font-size: 1.15rem; margin-top: 2.25rem; }
+  .sub { opacity: .7; margin-top: 0; }
+  .callout {
+    border-left: 3px solid #b8860b; padding: .75rem 1rem; margin: 1.5rem 0;
+    background: rgba(184,134,11,.08); border-radius: 0 4px 4px 0;
+  }
+  code { font-size: .9em; padding: .1em .35em; background: rgba(128,128,128,.15); border-radius: 3px; }
+  li { margin: .35rem 0; }
+</style>
+</head>
+<body>
+
+<h1>CashSense Privacy Policy</h1>
+<p class="sub">Last updated: 13 August 2026</p>
+
+<div class="callout">
+  <strong>The short version:</strong> CashSense has no internet permission. It cannot send your
+  data anywhere, because it has no ability to send anything at all. Everything the app reads and
+  everything it remembers stays on your phone.
+</div>
+
+<h2>Who this is from</h2>
+<p>
+  CashSense is an independent Android app that shows your bank balance as rupee notes and coins,
+  so that spending feels like spending cash. This policy explains exactly what the app touches.
+</p>
+
+<h2>What CashSense reads</h2>
+<p>
+  With your explicit permission, CashSense uses Android's notification listener to read notifications
+  so it can spot payments as they happen. Android does not let any app subscribe to a chosen few
+  apps' notifications — a listener is offered all of them — so CashSense filters immediately and
+  narrowly:
+</p>
+<ul>
+  <li>Notifications from anything other than a payment app, a bank app, or an app that carries bank
+      alerts (your SMS and email apps) are <strong>discarded without being examined</strong>.</li>
+  <li>Of what remains, only messages that actually describe a completed payment — an amount sitting
+      beside a word like "debited", "credited" or "paid to" — are used. Everything else is dropped.</li>
+</ul>
+<p>
+  The app also uses your <strong>camera</strong>, only while you are on the QR scanner screen, to read
+  a UPI QR code. No image or video is recorded, saved, or transmitted; the camera frame is decoded
+  and discarded.
+</p>
+
+<h2>What CashSense stores on your phone</h2>
+<p>Held in a private database inside the app's own storage, readable by no other app:</p>
+<ul>
+  <li>The amount, direction (money in or out), and time of each transaction.</li>
+  <li>The bank's reference number (UPI RRN/UTR) for a payment, when the message quotes one. This is
+      what lets the app tell one payment announced four times apart from four separate payments.</li>
+  <li>The package name of the app that announced the payment.</li>
+  <li>The text of the notification a transaction was read from, so you can check what the app saw
+      if a figure ever looks wrong.</li>
+  <li>Your starting balance and your settings.</li>
+</ul>
+
+<h2>What CashSense does not do</h2>
+<ul>
+  <li><strong>No data leaves your device.</strong> The app does not hold the <code>INTERNET</code>
+      permission, so it is technically incapable of transmitting anything.</li>
+  <li>No accounts, no sign-up, no cloud sync, no backup to any server.</li>
+  <li>No analytics, no crash reporting, no advertising, no tracking SDKs of any kind.</li>
+  <li>No selling or sharing of data with anyone, for any purpose. There is nothing to sell and no
+      channel to sell it through.</li>
+  <li>No connection to your bank. CashSense never asks for and never receives your banking
+      credentials, card numbers, PINs, OTPs, or account access. It only reads notifications your
+      bank has already sent to your phone.</li>
+</ul>
+
+<h2>Your control over the data</h2>
+<ul>
+  <li><strong>Revoke access at any time</strong> in Android Settings → Notifications → Device &amp;
+      app notifications, by turning CashSense off. Detection stops immediately.</li>
+  <li><strong>Delete everything</strong> with "Reset wallet" inside the app, or by uninstalling it.
+      Uninstalling removes the database with the app; nothing survives elsewhere, because nothing
+      was ever stored elsewhere.</li>
+</ul>
+
+<h2>Children</h2>
+<p>
+  CashSense is intended for adults managing their own money and is not directed at children under 13.
+</p>
+
+<h2>Changes to this policy</h2>
+<p>
+  If the app ever changes what it reads or stores, this page will be updated and the date at the top
+  changed with it. Any change that would involve data leaving the device would be announced in the
+  app before it took effect.
+</p>
+
+<h2>Contact</h2>
+<p>
+  Questions about this policy or about what the app does with your data:
+  <a href="mailto:tarannum@saltodeefe.com">tarannum@saltodeefe.com</a>
+</p>
+
+</body>
+</html>

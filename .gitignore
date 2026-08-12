@@ -1,6 +1,12 @@
 # Machine-specific — points at this computer's Android SDK install
 local.properties
 
+# Release signing. The upload key is the only thing that can ever publish an update to the
+# listing, and its passwords sit next to it — neither goes anywhere near the repository.
+keystore.properties
+*.jks
+*.keystore
+
 # Build outputs
 *.apk
 *.aab
