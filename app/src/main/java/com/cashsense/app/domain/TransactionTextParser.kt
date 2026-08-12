@@ -141,8 +141,48 @@ object TransactionTextParser {
         "in.org.npci.upiapp",                     // BHIM
         "in.amazon.mShop.android.shopping",       // Amazon Pay
         "com.dreamplug.androidapp",               // CRED
-        "money.super.payments"
+        "money.super.payments",
+        "com.mobikwik_new",
+        "com.freecharge.android"
     )
+
+    /**
+     * Apps that carry a bank's own alerts among everything else they deliver. Their notifications
+     * are read, but never trusted on wording alone — a message here must corroborate itself with a
+     * reference or an account number, because the same inbox also carries adverts quoting prices.
+     */
+    private val alertCarrierPackages = setOf(
+        "com.google.android.gm",                  // Gmail
+        "com.google.android.apps.messaging",      // Messages
+        "com.samsung.android.messaging",
+        "com.android.mms",
+        "com.microsoft.office.outlook",
+        "com.android.shell"                       // adb-posted notifications, for testing
+    )
+
+    /**
+     * Whether this app's notifications are considered at all.
+     *
+     * Reading every app on the phone is what produced the two worst failures: a Spotify advert
+     * became a ₹799 payment, and a WhatsApp group chat mentioning a transfer became a ₹211 one.
+     * Neither app has any business describing the state of a bank account. Only payment apps and
+     * the carriers of bank alerts are read now; a chat app relaying talk about money is not a
+     * record of money moving.
+     */
+    private fun isTrustedSource(packageName: String): Boolean =
+        packageName in paymentAppPackages ||
+            packageName in alertCarrierPackages ||
+            // Banks' own apps, which name themselves plainly and vary too much to list.
+            packageName.contains("bank", ignoreCase = true)
+
+    /**
+     * "…to you" — the money came in, whatever verb introduced it.
+     *
+     * A payment app writes both directions with the same verbs: "sent ₹211 to Ramesh" is money
+     * out, "sent ₹211 to You" is money in. Reading only the verb inverted a real ₹211 credit into
+     * a debit, which is the costliest kind of mistake — the balance moves by twice the amount.
+     */
+    private val toYouRegex = Regex("""\bto\s+you\b""", RegexOption.IGNORE_CASE)
 
     /**
      * How far from the amount a transaction verb may sit and still be describing it.
@@ -175,6 +215,8 @@ object TransactionTextParser {
     )
 
     fun parse(packageName: String, title: String?, text: String?): ParsedTransaction? {
+        if (!isTrustedSource(packageName)) return null
+
         val combined = listOfNotNull(title, text).joinToString(" ").trim()
         if (combined.isEmpty()) return null
 
@@ -217,10 +259,16 @@ object TransactionTextParser {
         val from = (amountRange.first - VERB_PROXIMITY_CHARS).coerceAtLeast(0)
         val to = (amountRange.last + 1 + VERB_PROXIMITY_CHARS).coerceAtMost(text.length)
         val nearbyLower = lower.substring(from, to)
+        val nearby = text.substring(from, to)
+
+        // Checked before any verb: the recipient settles the direction outright. "sent ₹211 to
+        // You" and "paid ₹211 to You" are money in, however much they read like money out.
+        if (toYouRegex.containsMatchIn(nearby)) return TransactionDirection.CREDIT
+
         return when {
             debitKeywords.any { nearbyLower.contains(it) } -> TransactionDirection.DEBIT
             creditKeywords.any { nearbyLower.contains(it) } -> TransactionDirection.CREDIT
-            paidOrSentToRegex.containsMatchIn(text.substring(from, to)) -> TransactionDirection.DEBIT
+            paidOrSentToRegex.containsMatchIn(nearby) -> TransactionDirection.DEBIT
             else -> null
         }
     }

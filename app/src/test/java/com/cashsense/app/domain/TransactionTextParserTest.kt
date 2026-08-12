@@ -253,6 +253,64 @@ class TransactionTextParserTest {
         assertFalse(result.corroborated)
     }
 
+    // A WhatsApp group chat turned a real ₹211 credit into a ₹211 debit — a ₹422 swing — because
+    // a member's message mentioned the transfer and "sent … to" was read as money going out.
+
+    @Test
+    fun `a chat app is not a payment source`() {
+        val result = TransactionTextParser.parse(
+            packageName = "com.whatsapp",
+            title = "Balaji FC (8 messages)",
+            text = "Akshat Joshi Balaji PG sent ₹211.00 to You"
+        )
+        assertNull(result)
+    }
+
+    @Test
+    fun `money sent to you is money received`() {
+        // Same wording, but from a payment app, where it is a real notification of a real credit.
+        val result = TransactionTextParser.parse(
+            packageName = "com.phonepe.app",
+            title = "Akshat Joshi sent ₹211.00 to You",
+            text = "Received in your account"
+        )
+        assertNotNull(result)
+        assertEquals(21100L, result!!.amountPaise)
+        assertEquals(TransactionDirection.CREDIT, result.direction)
+    }
+
+    @Test
+    fun `money sent to someone else is still money out`() {
+        val result = TransactionTextParser.parse(
+            packageName = "com.phonepe.app",
+            title = "Payment successful",
+            text = "You sent ₹211.00 to Akshat Joshi"
+        )
+        assertNotNull(result)
+        assertEquals(TransactionDirection.DEBIT, result!!.direction)
+    }
+
+    @Test
+    fun `an unknown app is ignored however much it sounds like a payment`() {
+        val result = TransactionTextParser.parse(
+            packageName = "com.instagram.android",
+            title = null,
+            text = "Rs.500.00 debited from A/c XX2260. Ref 622116409481"
+        )
+        assertNull(result)
+    }
+
+    @Test
+    fun `a bank's own app is trusted`() {
+        val result = TransactionTextParser.parse(
+            packageName = "com.snapwork.hdfcbank",
+            title = null,
+            text = "Rs.500.00 debited from A/c XX2260"
+        )
+        assertNotNull(result)
+        assertEquals(TransactionDirection.DEBIT, result!!.direction)
+    }
+
     private fun isDetected(text: String): Boolean =
         TransactionTextParser.parse("com.some.bank", null, text) != null
 
