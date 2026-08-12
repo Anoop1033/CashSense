@@ -15,7 +15,17 @@ data class ParsedTransaction(
      * matching on it identifies re-announcements of one payment with certainty — no guessing
      * from amounts and timing.
      */
-    val referenceId: String?
+    val referenceId: String?,
+    /**
+     * Whether something in the message independently corroborates that this is a real payment,
+     * rather than a number and a verb happening to appear in the same text.
+     *
+     * Genuine bank alerts carry a reference, or name the account, or arrive from a payment app.
+     * Marketing mail carries none of those. Only a corroborated detection is applied to the
+     * balance on its own; the rest wait to be confirmed, so a misread can never move money
+     * silently — it can only ask.
+     */
+    val corroborated: Boolean
 )
 
 /**
@@ -102,6 +112,49 @@ object TransactionTextParser {
     )
 
     /**
+     * Marks a message as bulk mail rather than a payment alert. A Spotify advert was recorded as
+     * a ₹799 payment because its price supplied the amount and its unsubscribe footer — "this
+     * message was sent to …" — supplied the verb. No bank alert carries any of this language.
+     */
+    private val bulkMailVetoKeywords = listOf(
+        "unsubscribe", "this message was sent to", "edit your profile",
+        "terms of use", "terms and conditions", "privacy policy",
+        "limited eligibility", "t&c apply", "manage preferences",
+        "view in browser", "no longer wish to receive"
+    )
+
+    /** Names the account the money moved in or out of: "A/c XX2260", "Acct no. 1234". */
+    private val accountFragmentRegex = Regex(
+        """\b(?:a/?c|acct|account)\b[^0-9a-z]{0,12}(?:no\.?|number)?[^0-9a-z]{0,6}[x*]{0,6}\d{3,}""",
+        RegexOption.IGNORE_CASE
+    )
+
+    /**
+     * Apps whose notifications are only ever about money, so their wording needs no further
+     * corroboration. Mail and SMS apps are deliberately absent: they carry everything else too,
+     * which is exactly how the Spotify advert got in.
+     */
+    private val paymentAppPackages = setOf(
+        "com.google.android.apps.nbu.paisa.user", // Google Pay
+        "com.phonepe.app",
+        "net.one97.paytm",
+        "in.org.npci.upiapp",                     // BHIM
+        "in.amazon.mShop.android.shopping",       // Amazon Pay
+        "com.dreamplug.androidapp",               // CRED
+        "money.super.payments"
+    )
+
+    /**
+     * How far from the amount a transaction verb may sit and still be describing it.
+     *
+     * The Spotify advert's price and the word "sent to" in its footer were six hundred characters
+     * and several unrelated sentences apart; in a genuine alert the two are always adjacent —
+     * "Rs.799 debited from", "paid ₹70 to", "₹236.00 credited to". Requiring them close together
+     * is what separates a sentence about a payment from a page that merely mentions a price.
+     */
+    private const val VERB_PROXIMITY_CHARS = 45
+
+    /**
      * Phrases meaning "money did not actually move (yet)". These matter far more now that a
      * detected payment can go straight into the balance: a scheduled debit, a declined payment or
      * someone's collect request all read like a transaction to a keyword match, and silently
@@ -128,26 +181,48 @@ object TransactionTextParser {
         val lower = combined.lowercase()
         if (promoVetoKeywords.any { lower.contains(it) }) return null
         if (notCompletedVetoKeywords.any { lower.contains(it) }) return null
+        if (bulkMailVetoKeywords.any { lower.contains(it) }) return null
 
-        val match = amountRegex.find(combined) ?: bareAmountRegex.find(combined) ?: return null
-        val amount = match.groupValues[1].replace(",", "").toDoubleOrNull() ?: return null
-        if (amount <= 0.0) return null
+        // Every amount in the message is considered, and each is kept only if a transaction verb
+        // sits beside it. Taking the first amount and then hunting the whole message for any verb
+        // is what let an advert's price pair with an unsubscribe footer's "sent to".
+        val amounts = (amountRegex.findAll(combined) + bareAmountRegex.findAll(combined))
+            .sortedBy { it.range.first }
 
-        val direction = when {
-            debitKeywords.any { lower.contains(it) } -> TransactionDirection.DEBIT
-            creditKeywords.any { lower.contains(it) } -> TransactionDirection.CREDIT
-            paidOrSentToRegex.containsMatchIn(combined) -> TransactionDirection.DEBIT
-            else -> return null
+        for (match in amounts) {
+            val amount = match.groupValues[1].replace(",", "").toDoubleOrNull() ?: continue
+            if (amount <= 0.0) continue
+            val direction = directionBeside(combined, lower, match.range) ?: continue
+
+            return ParsedTransaction(
+                amountPaise = Math.round(amount * 100),
+                direction = direction,
+                sourcePackage = packageName,
+                rawText = combined,
+                referenceId = findReference(combined),
+                corroborated = findReference(combined) != null ||
+                    accountFragmentRegex.containsMatchIn(combined) ||
+                    packageName in paymentAppPackages
+            )
         }
+        return null
+    }
 
-        val amountPaise = Math.round(amount * 100)
-        return ParsedTransaction(
-            amountPaise = amountPaise,
-            direction = direction,
-            sourcePackage = packageName,
-            rawText = combined,
-            referenceId = findReference(combined)
-        )
+    /** The transaction verb governing an amount, or null if none sits close enough to it. */
+    private fun directionBeside(
+        text: String,
+        lower: String,
+        amountRange: IntRange
+    ): TransactionDirection? {
+        val from = (amountRange.first - VERB_PROXIMITY_CHARS).coerceAtLeast(0)
+        val to = (amountRange.last + 1 + VERB_PROXIMITY_CHARS).coerceAtMost(text.length)
+        val nearbyLower = lower.substring(from, to)
+        return when {
+            debitKeywords.any { nearbyLower.contains(it) } -> TransactionDirection.DEBIT
+            creditKeywords.any { nearbyLower.contains(it) } -> TransactionDirection.CREDIT
+            paidOrSentToRegex.containsMatchIn(text.substring(from, to)) -> TransactionDirection.DEBIT
+            else -> null
+        }
     }
 
     private fun findReference(text: String): String? {

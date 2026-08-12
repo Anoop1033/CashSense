@@ -133,10 +133,15 @@ class WalletRepository(
             if (neighbours.isNotEmpty()) return@withLock
         }
 
-        // Applied straight to the balance unless the user asked to vet detections first. Nothing
-        // is destroyed either way: an applied transaction can be removed again from History,
-        // which is what makes trusting the parser by default reasonable.
-        val autoApply = prefs.autoApplyDetected.first()
+        // Applied straight to the balance unless the user asked to vet detections first — and
+        // only when the message corroborated itself, by quoting a reference, naming the account,
+        // or arriving from a payment app.
+        //
+        // Reading arbitrary notification text will occasionally misfire; a Spotify advert was
+        // once recorded as a ₹799 payment. What matters is that a misfire cannot move money on
+        // its own. An uncorroborated reading waits on the Wallet screen to be confirmed, so the
+        // worst it can do is ask.
+        val autoApply = prefs.autoApplyDetected.first() && parsed.corroborated
 
         dao.insert(
             TransactionEntity(

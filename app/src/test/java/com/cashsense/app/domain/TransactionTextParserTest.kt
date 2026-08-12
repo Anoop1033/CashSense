@@ -183,6 +183,76 @@ class TransactionTextParserTest {
         assertEquals(TransactionDirection.CREDIT, result!!.direction)
     }
 
+    // The advert that was actually recorded as a ₹799 payment on a real phone. Its price gave the
+    // amount; its unsubscribe footer, six hundred characters away, gave the verb "sent to".
+    private val spotifyAdvert =
+        "Spotify 12 months of Spotify Premium Standard at ₹799\n" +
+            "Listen to all the music you love, without hearing ads.\n" +
+            "12 months of Premium Standard at ₹799\n" +
+            "Play songs in any order, on any device, anywhere - even offline.\n" +
+            "GET 12 MONTHS FOR ₹799\n" +
+            "Premium Standard plan only. Limited Eligibility. Terms and conditions apply.\n" +
+            "This message was sent to anoop1033sg@gmail.com. If you don't want to receive these " +
+            "emails from Spotify in the future, you can edit your profile or unsubscribe.\n" +
+            "Terms of Use Privacy Policy Contact Us"
+
+    @Test
+    fun `an advert quoting a price is not a payment`() {
+        assertNull(TransactionTextParser.parse("com.google.android.gm", null, spotifyAdvert))
+    }
+
+    @Test
+    fun `a verb far from the amount does not describe it`() {
+        // Same shape as the advert, stripped of every bulk-mail phrase, so only the distance
+        // between the price and the verb is left to reject it.
+        val text = "Premium plan at ₹799 for twelve months of ad free listening on any device " +
+            "anywhere even offline, play songs in any order. This message was forwarded and " +
+            "sent to a subscriber of the mailing list."
+        assertNull(TransactionTextParser.parse("com.google.android.gm", null, text))
+    }
+
+    @Test
+    fun `a bank alert is corroborated by its reference`() {
+        val result = TransactionTextParser.parse("com.google.android.gm", null, realCreditEmail)
+        assertNotNull(result)
+        assertTrue(result!!.corroborated)
+    }
+
+    @Test
+    fun `a bank alert is corroborated by naming the account`() {
+        val result = TransactionTextParser.parse(
+            packageName = "com.google.android.apps.messaging",
+            title = null,
+            text = "Rs.500.00 debited from A/c XX2260 towards a purchase"
+        )
+        assertNotNull(result)
+        assertTrue(result!!.corroborated)
+    }
+
+    @Test
+    fun `a payment app needs no further corroboration`() {
+        val result = TransactionTextParser.parse(
+            packageName = "com.google.android.apps.nbu.paisa.user",
+            title = "MAYANK SHARMA paid you ₹236.00",
+            text = "Sent using Paytm UPI"
+        )
+        assertNotNull(result)
+        assertTrue(result!!.corroborated)
+    }
+
+    @Test
+    fun `a bare reading from mail with nothing to back it up is not corroborated`() {
+        val result = TransactionTextParser.parse(
+            packageName = "com.google.android.gm",
+            title = null,
+            text = "You paid ₹450 to the canteen"
+        )
+        // Still read as a payment — but it must be confirmed rather than applied on its own.
+        assertNotNull(result)
+        assertEquals(TransactionDirection.DEBIT, result!!.direction)
+        assertFalse(result.corroborated)
+    }
+
     private fun isDetected(text: String): Boolean =
         TransactionTextParser.parse("com.some.bank", null, text) != null
 

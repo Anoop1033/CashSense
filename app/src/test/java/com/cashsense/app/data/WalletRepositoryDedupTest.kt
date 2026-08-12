@@ -98,7 +98,10 @@ class WalletRepositoryDedupTest {
         direction = TransactionDirection.CREDIT,
         sourcePackage = sourcePackage,
         rawText = "Rs.236.00 credited",
-        referenceId = reference
+        referenceId = reference,
+        // These tests are about duplicate handling, not about whether a reading is trustworthy,
+        // so each stands in for an alert that corroborated itself.
+        corroborated = true
     )
 
     @Test
