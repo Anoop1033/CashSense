@@ -66,8 +66,18 @@ fun SettingsScreen(repository: WalletRepository) {
                     Text("Automatic transaction detection", style = MaterialTheme.typography.titleMedium)
                     Text(
                         text = when {
+                            // Play requires a plain-language disclosure of what a sensitive
+                            // permission reads and where it goes, shown before it is requested —
+                            // not buried in the privacy policy.
                             !listenerEnabled ->
-                                "Notification access is OFF. Grant it so CashSense can detect payments automatically."
+                                "Notification access is OFF. CashSense reads notifications to spot " +
+                                    "payments as they happen.\n\n" +
+                                    "Android does not let an app pick which notifications it receives, " +
+                                    "so access covers all of them. CashSense discards everything that " +
+                                    "is not from a payment app, a bank, or your SMS and email, and " +
+                                    "keeps only the amount, direction and reference of a payment.\n\n" +
+                                    "Nothing is logged and nothing leaves your phone — the app has no " +
+                                    "internet access at all."
                             // Permission granted but the system has not bound the listener —
                             // detection is dead even though everything looks fine.
                             !listenerConnected ->
