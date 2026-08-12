@@ -93,8 +93,7 @@ stylised illustrations, not reproductions of currency.
 
 **Category:** Finance
 **Tags:** Budgeting, Expense tracker, Personal finance
-**Contact email:** tarannum@saltodeefe.com — *change if you want a different public address; this
-one becomes visible on the listing*
+**Contact email:** anup1033@gmail.com — *visible on the public listing*
 **Privacy policy URL:** `https://anoop1033.github.io/CashSense/privacy-policy.html`
 (needs GitHub Pages switched on — see the checklist below)
 
