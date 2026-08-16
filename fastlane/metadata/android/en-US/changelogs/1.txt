@@ -1,0 +1,7 @@
+First release.
+
+Your bank balance shown as the notes and coins it is made of, shrinking as you spend. Payments are detected from your bank's and UPI apps' notifications, and the same payment announced by SMS, email and a UPI app is recognised as one rather than three.
+
+Notes lift away from the top when you spend and drop in from below when you are paid — including everything that happened while the app was closed, replayed when you next open it.
+
+No internet permission: nothing the app reads can leave your phone.

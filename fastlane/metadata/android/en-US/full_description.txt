@@ -1,0 +1,33 @@
+Paying by UPI is frictionless — and that is exactly the problem. Cash left your hand and you felt it go. A UPI payment leaves nothing behind but a number that was already abstract.
+
+CashSense puts the feeling back. It shows your balance as the actual notes and coins it is made of: ten ₹500 notes, a ₹200, a ₹50. Spend, and you watch a note lift out of the wallet and fly away. Get paid, and one drops in. Nothing else changes about how you pay — CashSense just makes the money visible again.
+
+<b>How it works</b>
+
+Tell CashSense your current balance once. After that it reads the payment notifications your bank and UPI apps already send you, and keeps the wallet in step automatically. No statements to import, no spreadsheets, nothing to remember to do.
+
+<b>Features</b>
+
+* Your balance as physical currency, in real Indian denominations, not a bar chart
+* Notes fly out when you spend and drop in when you are paid — including everything that happened while the app was closed, replayed the moment you open it
+* Payments detected automatically from bank and UPI notifications
+* The same payment announced by your bank's SMS, its email and your UPI app is recognised as one payment, not three, by matching the bank's own UPI reference number
+* Add or remove money by hand whenever you want
+* Pay anyone by UPI or QR code from inside the app
+* Full history, and anything read wrongly can be removed with a long press
+
+<b>Private by construction, not by promise</b>
+
+CashSense has no internet permission. Not "we choose not to send your data" — the app is technically incapable of sending anything anywhere. There is no account, no sign-up, no cloud, no analytics, no ads, and no tracking of any kind. Your transactions live in a database on your phone and nowhere else. Uninstall the app and they are gone with it.
+
+CashSense never asks for and never receives your banking credentials, card numbers, PINs or OTPs. It has no connection to your bank whatsoever. It only reads notifications your bank has already sent to your own phone.
+
+<b>About notification access</b>
+
+To detect payments, CashSense uses Android's notification access. Android does not let any app subscribe to a chosen few apps' notifications, so this permission covers all of them — which is why CashSense filters immediately: anything not from a payment app, a bank app, or your SMS and email apps is discarded without being examined. Of what remains, only messages describing a completed payment are used. You can revoke the permission at any time, and the app keeps working with manual entry.
+
+<b>Limitations worth knowing</b>
+
+Reading notification text is inherently heuristic. It is deliberately narrow and tested against real bank wordings, but your bank's phrasing may differ, so check the first few transactions. The balance is a running total from the figure you enter at setup, not a reading from your bank; India has no general balance API outside RBI's Account Aggregator framework, which is open only to regulated entities. If the two drift apart, correct it by hand.
+
+Note designs are stylised illustrations, not reproductions of currency. CashSense is not affiliated with the Reserve Bank of India or with any bank.

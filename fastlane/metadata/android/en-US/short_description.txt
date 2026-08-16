@@ -1,0 +1,1 @@
+See your bank balance as rupee notes that shrink as you spend. Works offline.
