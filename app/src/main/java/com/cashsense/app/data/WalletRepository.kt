@@ -215,6 +215,44 @@ class WalletRepository(
         )
     }
 
+    /**
+     * Re-anchors the wallet to the balance the bank actually reports, by recording the difference
+     * as a single correcting entry. Returns the signed amount applied, in paise; zero when the two
+     * already agree.
+     *
+     * The wallet's balance is a running total of detected events, and a running total can only ever
+     * be as good as the events it saw. A payment made while the phone was off, a bank whose wording
+     * nothing matches, a duplicate that slipped through before the reference check existed — any of
+     * these leaves the figure drifted from the truth, with no way back short of deleting everything
+     * and starting again. Re-entering the real balance costs one number and keeps the history.
+     *
+     * The difference is recorded rather than silently applied so that History still adds up: a
+     * balance that changed with nothing to explain it would be a worse kind of wrong than the drift.
+     */
+    suspend fun correctBalanceTo(actualBalancePaise: Long): Long {
+        // Deliberately the uncoerced sum, not `balancePaise`, which floors at zero — correcting
+        // against a floored figure would bake the floored-away amount into the adjustment.
+        val current = confirmedTransactions.first().sumOf { tx ->
+            if (tx.direction == TransactionDirection.CREDIT) tx.amountPaise else -tx.amountPaise
+        }
+        val delta = actualBalancePaise - current
+        if (delta == 0L) return 0L
+
+        dao.insert(
+            TransactionEntity(
+                amountPaise = kotlin.math.abs(delta),
+                direction = if (delta > 0) TxDirection.CREDIT else TxDirection.DEBIT,
+                status = TxStatus.CONFIRMED,
+                source = TxSource.CORRECTION,
+                sourcePackage = null,
+                note = "Balance correction",
+                rawText = null,
+                timestampMillis = System.currentTimeMillis()
+            )
+        )
+        return delta
+    }
+
     suspend fun resetWallet() {
         dao.clearAll()
         prefs.setOnboarded(false)

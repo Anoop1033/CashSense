@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -28,11 +30,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import com.cashsense.app.data.WalletRepository
 import com.cashsense.app.service.UpiNotificationListenerService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import java.text.NumberFormat
+import java.util.Locale
 
 @Composable
 fun SettingsScreen(repository: WalletRepository) {
@@ -41,6 +46,9 @@ fun SettingsScreen(repository: WalletRepository) {
     var showResetConfirm by remember { mutableStateOf(false) }
     var listenerEnabled by remember { mutableStateOf(UpiNotificationListenerService.isEnabled(context)) }
     var listenerConnected by remember { mutableStateOf(UpiNotificationListenerService.isConnected) }
+    var actualBalanceText by remember { mutableStateOf("") }
+    var correctionMessage by remember { mutableStateOf<String?>(null) }
+    val balancePaise by repository.balancePaise.collectAsState(initial = 0L)
 
     // Re-check on every visit: the binding can drop while the screen is not in front of the user.
     LaunchedEffect(Unit) {
@@ -147,6 +155,55 @@ fun SettingsScreen(repository: WalletRepository) {
 
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Correct balance", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "The wallet adds up the payments it saw. If it ever drifts from what your " +
+                            "bank says — a payment made while the phone was off, a message it could " +
+                            "not read — put the real figure in here and the difference is recorded " +
+                            "as a single correction.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Text(
+                        "Wallet currently shows ₹${formatRupees(balancePaise)}",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    OutlinedTextField(
+                        value = actualBalanceText,
+                        onValueChange = {
+                            actualBalanceText = it
+                            correctionMessage = null
+                        },
+                        label = { Text("Balance your bank shows (₹)") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    Button(
+                        enabled = actualBalanceText.toDoubleOrNull()?.let { it >= 0.0 } == true,
+                        onClick = {
+                            val target = actualBalanceText.toDoubleOrNull() ?: return@Button
+                            val targetPaise = Math.round(target * 100)
+                            scope.launch {
+                                val delta = repository.correctBalanceTo(targetPaise)
+                                correctionMessage = when {
+                                    delta == 0L -> "Already matches — nothing to correct."
+                                    delta > 0 -> "Added ₹${formatRupees(delta)} to match your bank."
+                                    else -> "Removed ₹${formatRupees(-delta)} to match your bank."
+                                }
+                                actualBalanceText = ""
+                            }
+                        }
+                    ) {
+                        Text("Apply correction")
+                    }
+                    correctionMessage?.let {
+                        Text(it, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+
+            Card(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Reset wallet", style = MaterialTheme.typography.titleMedium)
                     Text(
                         "Clears all transactions and takes you back to the starting-balance setup.",
@@ -176,4 +233,17 @@ fun SettingsScreen(repository: WalletRepository) {
             }
         )
     }
+}
+
+/**
+ * Rupees with paise, grouped Indian-style. Paise are shown here even though the rest of the app
+ * rounds to whole rupees: this screen exists to reconcile against a bank statement, and a figure
+ * that quietly drops 80 paise is exactly the kind of drift it is meant to settle.
+ */
+private fun formatRupees(paise: Long): String {
+    val format = NumberFormat.getNumberInstance(Locale("en", "IN")).apply {
+        minimumFractionDigits = 2
+        maximumFractionDigits = 2
+    }
+    return format.format(paise / 100.0)
 }

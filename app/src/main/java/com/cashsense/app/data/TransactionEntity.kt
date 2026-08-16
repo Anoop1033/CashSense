@@ -18,6 +18,14 @@ object TxSource {
     const val AUTO = "AUTO"
     const val MANUAL = "MANUAL"
     const val UPI = "UPI"
+
+    /**
+     * A single entry that re-anchors the wallet to the balance the bank actually reports.
+     *
+     * Kept distinct from [MANUAL] so a correction reads as what it is in History — an admission
+     * that the running total had drifted — rather than as a payment the user made.
+     */
+    const val CORRECTION = "CORRECTION"
 }
 
 @Entity(tableName = "transactions")
