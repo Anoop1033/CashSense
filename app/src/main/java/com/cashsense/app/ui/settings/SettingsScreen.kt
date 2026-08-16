@@ -7,11 +7,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -66,6 +69,12 @@ fun SettingsScreen(repository: WalletRepository) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                // The screen ran out of room the moment a fourth card was added: without this the
+                // overflow is simply clipped, with no way to reach the cards below the fold.
+                .verticalScroll(rememberScrollState())
+                // Keeps the keyboard from sitting over the balance field and its button, which is
+                // the one place on this screen where something has to be typed.
+                .imePadding()
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
