@@ -3,6 +3,7 @@ package com.cashsense.app.data
 import com.cashsense.app.domain.ParsedTransaction
 import com.cashsense.app.domain.TransactionDirection
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.sync.Mutex
@@ -253,6 +254,36 @@ class WalletRepository(
         return delta
     }
 
+    /** The window during which detection was off, or null if there is nothing to report. */
+    val detectionGap: Flow<ClosedRange<Long>?> =
+        combine(prefs.detectionGapStart, prefs.detectionGapEnd) { start, end ->
+            if (start != null && end != null && end > start) start..end else null
+        }
+
+    suspend fun noteListenerDisconnected(atMillis: Long) {
+        prefs.setListenerDisconnectedAt(atMillis)
+    }
+
+    /**
+     * Closes off a period during which the listener was unbound, recording it if it lasted long
+     * enough to have hidden a payment.
+     *
+     * Android takes the listener away whenever it puts the app to sleep — which vendor battery
+     * managers do aggressively — and while it is gone nothing arrives at all. There is no failed
+     * parse to inspect afterwards and no notification left to find, which is exactly why several
+     * missing payments could never be explained. The app cannot stop the system doing this, but it
+     * can refuse to pretend it saw everything.
+     */
+    suspend fun noteListenerConnected(atMillis: Long) {
+        val since = prefs.listenerDisconnectedAt.first()
+        prefs.setListenerDisconnectedAt(null)
+        if (since != null && atMillis - since >= MIN_REPORTABLE_GAP_MILLIS) {
+            prefs.setDetectionGap(since, atMillis)
+        }
+    }
+
+    suspend fun dismissDetectionGap() = prefs.clearDetectionGap()
+
     suspend fun resetWallet() {
         dao.clearAll()
         prefs.setOnboarded(false)
@@ -279,5 +310,12 @@ class WalletRepository(
          * a row carrying no reference at all can be claimed.
          */
         const val PROVISIONAL_CLAIM_WINDOW_MILLIS = 10 * 60 * 1000L
+
+        /**
+         * How long the listener must have been away before the gap is worth telling the user
+         * about. Short unbinds happen routinely — on update, on reboot — and reporting those
+         * would train the user to ignore the warning that matters.
+         */
+        const val MIN_REPORTABLE_GAP_MILLIS = 5 * 60 * 1000L
     }
 }

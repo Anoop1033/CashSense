@@ -3,6 +3,7 @@ package com.cashsense.app.service
 import android.app.Notification
 import android.content.ComponentName
 import android.content.Context
+import android.os.PowerManager
 import android.provider.Settings
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
@@ -30,6 +31,8 @@ class UpiNotificationListenerService : NotificationListenerService() {
 
     override fun onListenerConnected() {
         isConnected = true
+        val app = application as CashSenseApp
+        scope.launch { app.repository.noteListenerConnected(System.currentTimeMillis()) }
     }
 
     /**
@@ -40,6 +43,10 @@ class UpiNotificationListenerService : NotificationListenerService() {
      */
     override fun onListenerDisconnected() {
         isConnected = false
+        // Recorded before asking for the binding back, because if the rebind does not come the
+        // moment it went away is the only evidence left that anything was missed.
+        val app = application as CashSenseApp
+        scope.launch { app.repository.noteListenerDisconnected(System.currentTimeMillis()) }
         requestRebind(ComponentName(this, UpiNotificationListenerService::class.java))
     }
 
@@ -73,6 +80,20 @@ class UpiNotificationListenerService : NotificationListenerService() {
         @Volatile
         var isConnected: Boolean = false
             private set
+
+        /**
+         * Whether Android has agreed to stop putting this app to sleep.
+         *
+         * This is the difference between detection working and detection silently not existing.
+         * When the system sleeps the app it unbinds the listener, and nothing arrives at all —
+         * no notification, no failed parse, no trace. Payments made in that window are never seen,
+         * and nothing afterwards can tell you they happened. Vendor battery managers, Samsung's
+         * especially, do this readily to apps they judge unused.
+         */
+        fun isExemptFromBatteryOptimisation(context: Context): Boolean {
+            val power = context.getSystemService(Context.POWER_SERVICE) as? PowerManager ?: return true
+            return power.isIgnoringBatteryOptimizations(context.packageName)
+        }
 
         fun isEnabled(context: Context): Boolean {
             val flat = Settings.Secure.getString(context.contentResolver, "enabled_notification_listeners")

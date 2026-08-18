@@ -27,9 +27,27 @@ interface WalletPreferences {
      */
     val lastSeenBalancePaise: Flow<Long?>
 
+    /**
+     * When Android last took the notification listener away, or null while it is bound.
+     *
+     * Android unbinds the listener whenever it puts the app to sleep, which aggressive vendor
+     * battery managers do freely. Nothing arrives while that lasts: no notification, no parse
+     * failure, no trace of any kind. Payments made in that window are simply never seen, which is
+     * why they were impossible to account for after the fact. Remembering when it started is what
+     * lets the app say so.
+     */
+    val listenerDisconnectedAt: Flow<Long?>
+
+    /** The span of the last period detection was off, or null if there has not been one. */
+    val detectionGapStart: Flow<Long?>
+    val detectionGapEnd: Flow<Long?>
+
     suspend fun setOnboarded(value: Boolean)
     suspend fun setAutoApplyDetected(value: Boolean)
     suspend fun setLastSeenBalancePaise(value: Long)
+    suspend fun setListenerDisconnectedAt(value: Long?)
+    suspend fun setDetectionGap(startMillis: Long, endMillis: Long)
+    suspend fun clearDetectionGap()
 }
 
 class WalletPrefs(private val context: Context) : WalletPreferences {
@@ -37,6 +55,9 @@ class WalletPrefs(private val context: Context) : WalletPreferences {
     private val onboardedKey = booleanPreferencesKey("has_onboarded")
     private val autoApplyKey = booleanPreferencesKey("auto_apply_detected")
     private val lastSeenBalanceKey = longPreferencesKey("last_seen_balance_paise")
+    private val listenerDisconnectedAtKey = longPreferencesKey("listener_disconnected_at")
+    private val detectionGapStartKey = longPreferencesKey("detection_gap_start")
+    private val detectionGapEndKey = longPreferencesKey("detection_gap_end")
 
     override val hasOnboarded: Flow<Boolean> =
         context.dataStore.data.map { it[onboardedKey] ?: false }
@@ -62,5 +83,34 @@ class WalletPrefs(private val context: Context) : WalletPreferences {
 
     override suspend fun setLastSeenBalancePaise(value: Long) {
         context.dataStore.edit { it[lastSeenBalanceKey] = value }
+    }
+
+    override val listenerDisconnectedAt: Flow<Long?> =
+        context.dataStore.data.map { it[listenerDisconnectedAtKey] }
+
+    override val detectionGapStart: Flow<Long?> =
+        context.dataStore.data.map { it[detectionGapStartKey] }
+
+    override val detectionGapEnd: Flow<Long?> =
+        context.dataStore.data.map { it[detectionGapEndKey] }
+
+    override suspend fun setListenerDisconnectedAt(value: Long?) {
+        context.dataStore.edit {
+            if (value == null) it.remove(listenerDisconnectedAtKey) else it[listenerDisconnectedAtKey] = value
+        }
+    }
+
+    override suspend fun setDetectionGap(startMillis: Long, endMillis: Long) {
+        context.dataStore.edit {
+            it[detectionGapStartKey] = startMillis
+            it[detectionGapEndKey] = endMillis
+        }
+    }
+
+    override suspend fun clearDetectionGap() {
+        context.dataStore.edit {
+            it.remove(detectionGapStartKey)
+            it.remove(detectionGapEndKey)
+        }
     }
 }

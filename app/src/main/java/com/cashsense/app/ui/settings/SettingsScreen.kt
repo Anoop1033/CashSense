@@ -1,6 +1,7 @@
 package com.cashsense.app.ui.settings
 
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -15,6 +16,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -40,6 +42,8 @@ import com.cashsense.app.service.UpiNotificationListenerService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.NumberFormat
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 
 @Composable
@@ -52,6 +56,10 @@ fun SettingsScreen(repository: WalletRepository) {
     var actualBalanceText by remember { mutableStateOf("") }
     var correctionMessage by remember { mutableStateOf<String?>(null) }
     val balancePaise by repository.balancePaise.collectAsState(initial = 0L)
+    val detectionGap by repository.detectionGap.collectAsState(initial = null)
+    var batteryExempt by remember {
+        mutableStateOf(UpiNotificationListenerService.isExemptFromBatteryOptimisation(context))
+    }
 
     // Re-check on every visit: the binding can drop while the screen is not in front of the user.
     LaunchedEffect(Unit) {
@@ -60,6 +68,9 @@ fun SettingsScreen(repository: WalletRepository) {
             delay(700)
             listenerEnabled = UpiNotificationListenerService.isEnabled(context)
             listenerConnected = UpiNotificationListenerService.isConnected
+            // Re-read on return from the system settings screen, so the warning clears itself
+            // once the exemption has actually been granted.
+            batteryExempt = UpiNotificationListenerService.isExemptFromBatteryOptimisation(context)
         }
     }
     val autoApply by repository.autoApplyDetected.collectAsState(initial = true)
@@ -162,6 +173,70 @@ fun SettingsScreen(repository: WalletRepository) {
                 }
             }
 
+            // The single biggest cause of a payment going unseen, and the one with no trace: when
+            // Android sleeps the app it unbinds the listener and nothing arrives at all.
+            if (!batteryExempt) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.errorContainer
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Android can put CashSense to sleep", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "While it is asleep the app receives no notifications, so payments made " +
+                                "in that time are missed with nothing to show for it. This is the " +
+                                "usual reason a transaction never appears.\n\n" +
+                                "Allow it to run unrestricted, then — on Samsung phones — also open " +
+                                "Battery settings and remove CashSense from \"Sleeping apps\".",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Button(onClick = {
+                            // The settings list, not the direct-request dialog: that one needs a
+                            // permission Play restricts, and this reaches the same switch.
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                )
+                            }.onFailure {
+                                context.startActivity(
+                                    Intent(
+                                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        Uri.fromParts("package", context.packageName, null)
+                                    )
+                                )
+                            }
+                        }) {
+                            Text("Let CashSense run in the background")
+                        }
+                    }
+                }
+            }
+
+            detectionGap?.let { gap ->
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.tertiaryContainer
+                    )
+                ) {
+                    Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text("Detection was off for a while", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            "CashSense was not receiving notifications between " +
+                                "${formatMoment(gap.start)} and ${formatMoment(gap.endInclusive)}. " +
+                                "Any payment made in that window was not recorded. Check your bank " +
+                                "for that period, then use Correct balance below.",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        OutlinedButton(onClick = { scope.launch { repository.dismissDetectionGap() } }) {
+                            Text("Got it")
+                        }
+                    }
+                }
+            }
+
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(modifier = Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("Correct balance", style = MaterialTheme.typography.titleMedium)
@@ -256,3 +331,7 @@ private fun formatRupees(paise: Long): String {
     }
     return format.format(paise / 100.0)
 }
+
+/** A moment in the user's own time, precise to the minute — enough to find it on a statement. */
+private fun formatMoment(millis: Long): String =
+    SimpleDateFormat("d MMM, h:mm a", Locale("en", "IN")).format(Date(millis))

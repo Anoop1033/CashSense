@@ -91,6 +91,12 @@ class WalletRepositoryDedupTest {
         override suspend fun setOnboarded(value: Boolean) = Unit
         override suspend fun setAutoApplyDetected(value: Boolean) = Unit
         override suspend fun setLastSeenBalancePaise(value: Long) = Unit
+        override val listenerDisconnectedAt: Flow<Long?> = flowOf(null)
+        override val detectionGapStart: Flow<Long?> = flowOf(null)
+        override val detectionGapEnd: Flow<Long?> = flowOf(null)
+        override suspend fun setListenerDisconnectedAt(value: Long?) = Unit
+        override suspend fun setDetectionGap(startMillis: Long, endMillis: Long) = Unit
+        override suspend fun clearDetectionGap() = Unit
     }
 
     private fun credit(reference: String?, sourcePackage: String) = ParsedTransaction(
