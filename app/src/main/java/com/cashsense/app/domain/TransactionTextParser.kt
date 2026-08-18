@@ -201,9 +201,14 @@ object TransactionTextParser {
      * applying one would leave the balance wrong with nothing prompting the user to look.
      */
     private val notCompletedVetoKeywords = listOf(
-        // Yet to happen.
-        "will be debited", "will be credited", "will be deducted", "is due", "due on",
-        "due date", "scheduled", "mandate", "autopay", "standing instruction",
+        // Yet to happen. Strictly phrases about *tense*: a word naming the mechanism a payment was
+        // set up through — mandate, autopay, standing instruction, scheduled — says nothing about
+        // whether it has run yet, and vetoing on those silently dropped every completed recurring
+        // debit. "Rs.34.00 debited towards your registered mandate" is money that has gone, and
+        // small subscription charges are exactly the amounts least likely to be missed by eye.
+        // The genuinely-future notices still carry one of these tense phrases and are still vetoed.
+        "will be debited", "will be credited", "will be deducted", "will be deducted from",
+        "is due", "due on", "due date", "is scheduled", "will be auto",
         // Did not happen.
         "failed", "declined", "unsuccessful", "was not processed", "could not be processed",
         "has been reversed", "will be reversed", "on hold", "pending approval",

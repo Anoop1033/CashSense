@@ -323,6 +323,48 @@ class TransactionTextParserTest {
         assertFalse(isDetected("Your autopay mandate of Rs 1,200 is due on 20-Aug"))
     }
 
+    // A recurring payment names the arrangement it was set up under — mandate, autopay, standing
+    // instruction. That names the mechanism, not the tense, and treating those words as proof the
+    // money had not moved dropped every completed subscription charge without trace. Small
+    // recurring amounts are also the ones least likely to be noticed missing by eye.
+
+    @Test
+    fun `records a recurring payment that has already been taken`() {
+        assertTrue(
+            isDetected(
+                "Rs.34.00 has been debited from your account ending 2260 towards your " +
+                    "registered mandate. UPI transaction reference no.: 128141316278"
+            )
+        )
+        assertTrue(isDetected("AutoPay: Rs 199.00 debited from a/c XX1234 for NETFLIX. Ref 521234567890"))
+        assertTrue(
+            isDetected(
+                "Rs 450.00 debited as per your standing instruction. Ref 521234567891"
+            )
+        )
+    }
+
+    @Test
+    fun `still ignores a recurring payment that has not been taken yet`() {
+        assertFalse(isDetected("Rs 34.00 will be debited on 21-Aug towards your registered mandate"))
+        assertFalse(isDetected("Your autopay mandate of Rs 1,200 is due on 20-Aug"))
+        assertFalse(isDetected("Your SIP of Rs 5,000 is scheduled for 25-Aug"))
+    }
+
+    @Test
+    fun `a completed recurring debit reads as money going out`() {
+        val result = TransactionTextParser.parse(
+            packageName = "com.google.android.gm",
+            title = "HDFC Bank InstaAlerts",
+            text = "Rs.34.00 has been debited from your account ending 2260 towards your " +
+                "registered mandate on 19-08-26. UPI transaction reference no.: 128141316278"
+        )
+        assertNotNull(result)
+        assertEquals(TransactionDirection.DEBIT, result!!.direction)
+        assertEquals(3400L, result.amountPaise)
+        assertEquals("128141316278", result.referenceId)
+    }
+
     @Test
     fun `ignores a payment that did not go through`() {
         assertFalse(isDetected("Your payment of Rs 500 to SHOP failed. Ref 521234567890"))
